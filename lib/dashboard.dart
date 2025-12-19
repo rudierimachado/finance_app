@@ -23,9 +23,12 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   late Future<_DashboardData> _future;
 
+  late final VoidCallback _refreshListener;
+
   double? _currentBalance;
   double? _currentIncomePaid;
   double? _currentExpensePaid;
+  double? _currentExpensePending;
 
   // Cache de dados por mês/ano para evitar refetch
   final Map<String, _DashboardData> _dataCache = {};
@@ -34,6 +37,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _currentIncomePaid = data.monthIncomePaid;
     _currentExpensePaid = data.monthExpensePaid;
     _currentBalance = data.balance;
+    _currentExpensePending = data.monthExpensePending;
   }
 
   void _applyOptimisticPaidChange(_TxItem tx, bool isPaid) {
@@ -66,6 +70,23 @@ class _DashboardPageState extends State<DashboardPage> {
     _year = now.year;
     _month = now.month;
     _future = _fetchDashboard();
+
+    _refreshListener = () {
+      final cacheKey = '$_year-$_month';
+      _dataCache.remove(cacheKey);
+      if (mounted) {
+        setState(() {
+          _future = _fetchDashboardFor(_year, _month);
+        });
+      }
+    };
+    financeRefreshTick.addListener(_refreshListener);
+  }
+
+  @override
+  void dispose() {
+    financeRefreshTick.removeListener(_refreshListener);
+    super.dispose();
   }
 
   Future<_DashboardData> _fetchDashboard() async {
@@ -93,9 +114,10 @@ class _DashboardPageState extends State<DashboardPage> {
     final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode == 200 && (data['success'] == true)) {
-      final balance = (data['balance'] as num).toDouble();
+      final balance = (data['balance'] as num? ?? 0).toDouble();
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
+      final monthExpensePending = (data['month_expense_pending'] as num? ?? 0).toDouble();
       final monthIncomePaid = (data['month_income_paid'] as num? ?? 0).toDouble();
       final monthExpensePaid = (data['month_expense_paid'] as num? ?? 0).toDouble();
       final month = (data['month'] as num? ?? 0).toInt();
@@ -119,6 +141,7 @@ class _DashboardPageState extends State<DashboardPage> {
         balance: balance,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
+        monthExpensePending: monthExpensePending,
         monthIncomePaid: monthIncomePaid,
         monthExpensePaid: monthExpensePaid,
         month: month,
@@ -258,6 +281,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             _MonthSummaryCard(
                               monthIncome: data.monthIncome,
                               monthExpense: data.monthExpense,
+                              monthExpensePending: data.monthExpensePending,
                               month: data.month,
                               year: data.year,
                               onPrevMonth: _prevMonth,
@@ -275,12 +299,6 @@ class _DashboardPageState extends State<DashboardPage> {
                             const SizedBox(height: 10),
                             _PieSection(slices: data.expenseByCategory),
                             const SizedBox(height: 18),
-                            _PreviousMonthComparisonCard(
-                              userId: widget.userId,
-                              currentYear: _year,
-                              currentMonth: _month,
-                              current: data,
-                            ),
                           ],
                         ),
                       );
@@ -345,9 +363,10 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
     final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode == 200 && (data['success'] == true)) {
-      final balance = (data['balance'] as num).toDouble();
+      final balance = (data['balance'] as num? ?? 0).toDouble();
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
+      final monthExpensePending = (data['month_expense_pending'] as num? ?? 0).toDouble();
       final monthIncomePaid = (data['month_income_paid'] as num? ?? 0).toDouble();
       final monthExpensePaid = (data['month_expense_paid'] as num? ?? 0).toDouble();
       final month = (data['month'] as num? ?? 0).toInt();
@@ -357,6 +376,7 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
         balance: balance,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
+        monthExpensePending: monthExpensePending,
         monthIncomePaid: monthIncomePaid,
         monthExpensePaid: monthExpensePaid,
         month: month,
@@ -534,6 +554,7 @@ class _DashboardData {
   final double balance;
   final double monthIncome;
   final double monthExpense;
+  final double monthExpensePending;
   final double monthIncomePaid;
   final double monthExpensePaid;
   final int month;
@@ -545,6 +566,7 @@ class _DashboardData {
     required this.balance,
     required this.monthIncome,
     required this.monthExpense,
+    required this.monthExpensePending,
     required this.monthIncomePaid,
     required this.monthExpensePaid,
     required this.month,
@@ -685,6 +707,7 @@ Color _fallbackColorFor(String key) {
 class _MonthSummaryCard extends StatelessWidget {
   final double monthIncome;
   final double monthExpense;
+  final double monthExpensePending;
   final int month;
   final int year;
   final VoidCallback onPrevMonth;
@@ -693,6 +716,7 @@ class _MonthSummaryCard extends StatelessWidget {
   const _MonthSummaryCard({
     required this.monthIncome,
     required this.monthExpense,
+    required this.monthExpensePending,
     required this.month,
     required this.year,
     required this.onPrevMonth,
@@ -762,6 +786,21 @@ class _MonthSummaryCard extends StatelessWidget {
                   icon: Icons.arrow_downward,
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniStatCard(
+                  label: 'Pendentes',
+                  value: monthExpensePending,
+                  color: const Color(0xFFFBBF24),
+                  icon: Icons.schedule,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(child: SizedBox()),
             ],
           ),
         ],

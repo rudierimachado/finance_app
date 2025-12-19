@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'add_transaction.dart';
+import 'attachments_page.dart';
 import 'config.dart';
 
 class TransactionsPage extends StatefulWidget {
@@ -26,7 +27,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
   final _queryController = TextEditingController();
 
   late Future<List<_TxItem>> _future;
-  List<_TxItem> _lastLoadedItems = <_TxItem>[];
+  List<_TxItem> _currentItems = <_TxItem>[];
 
   @override
   void initState() {
@@ -51,6 +52,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
       } else {
         _month -= 1;
       }
+      _currentItems = []; // Limpar para forçar reload
       _future = _fetch();
     });
   }
@@ -63,6 +65,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
       } else {
         _month += 1;
       }
+      _currentItems = []; // Limpar para forçar reload
       _future = _fetch();
     });
   }
@@ -95,8 +98,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
       final id = (e['id'] as num?)?.toInt() ?? 0;
       final desc = e['description']?.toString() ?? '';
       final amount = (e['amount'] as num? ?? 0).toDouble();
-      final typeStr = e['type']?.toString() ?? 'expense';
+      final rawType = e['type']?.toString().trim().toLowerCase();
+      final typeStr = switch (rawType) {
+        'expense' || 'despesa' || 'saida' => 'expense',
+        'income' || 'receita' || 'entrada' => 'income',
+        _ => (rawType == null || rawType.isEmpty) ? 'expense' : rawType,
+      };
       final isRecurring = e['is_recurring'] == true;
+      final isPaid = e['is_paid'] == true;
       final dateStr = e['date']?.toString();
       DateTime? date;
       if (dateStr != null && dateStr.isNotEmpty) {
@@ -111,13 +120,13 @@ class _TransactionsPageState extends State<TransactionsPage> {
         amount: amount,
         type: typeStr,
         isRecurring: isRecurring,
+        isPaid: isPaid,
         date: date,
         categoryName: catName,
         categoryColor: catColor,
       ));
     }
 
-    _lastLoadedItems = items;
     return items;
   }
 
@@ -138,9 +147,100 @@ class _TransactionsPageState extends State<TransactionsPage> {
     }
   }
 
+  void _viewAttachments(int transactionId, String description) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AttachmentsPage(
+          userId: widget.userId,
+          transactionId: transactionId,
+          transactionDescription: description,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setPaid(int transactionId, bool newStatus) async {
+    // Update otimista: atualizar UI imediatamente
+    final itemIndex = _currentItems.indexWhere((item) => item.id == transactionId);
+    if (itemIndex != -1) {
+      setState(() {
+        _currentItems[itemIndex] = _TxItem(
+          id: _currentItems[itemIndex].id,
+          description: _currentItems[itemIndex].description,
+          amount: _currentItems[itemIndex].amount,
+          type: _currentItems[itemIndex].type,
+          date: _currentItems[itemIndex].date,
+          categoryName: _currentItems[itemIndex].categoryName,
+          categoryColor: _currentItems[itemIndex].categoryColor,
+          isRecurring: _currentItems[itemIndex].isRecurring,
+          isPaid: newStatus,
+        );
+      });
+    }
+
+    // Chamar backend em background
+    try {
+      final uri = Uri.parse(
+        '$apiBaseUrl/gerenciamento-financeiro/api/transactions/$transactionId',
+      );
+
+      final response = await http
+          .put(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': widget.userId,
+              'is_paid': newStatus,
+              'action': 'set_paid',
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        // Notificar dashboard para atualizar totais
+        financeRefreshTick.value = financeRefreshTick.value + 1;
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newStatus ? 'Marcada como paga' : 'Marcada como não paga'),
+              backgroundColor: const Color(0xFF00C9A7),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+      } else {
+        throw Exception(data['message'] ?? 'Erro ao atualizar status');
+      }
+    } catch (e) {
+      // Se falhou, reverter o update otimista
+      if (itemIndex != -1 && mounted) {
+        setState(() {
+          _currentItems[itemIndex] = _TxItem(
+            id: _currentItems[itemIndex].id,
+            description: _currentItems[itemIndex].description,
+            amount: _currentItems[itemIndex].amount,
+            type: _currentItems[itemIndex].type,
+            date: _currentItems[itemIndex].date,
+            categoryName: _currentItems[itemIndex].categoryName,
+            categoryColor: _currentItems[itemIndex].categoryColor,
+            isRecurring: _currentItems[itemIndex].isRecurring,
+            isPaid: !newStatus,
+          );
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _deleteTransaction(int transactionId) async {
     String? scope;
-    final tx = _lastLoadedItems.where((e) => e.id == transactionId).cast<_TxItem?>().firstWhere(
+    final tx = _currentItems.where((e) => e.id == transactionId).cast<_TxItem?>().firstWhere(
           (e) => e != null,
           orElse: () => null,
         );
@@ -217,15 +317,11 @@ class _TransactionsPageState extends State<TransactionsPage> {
         );
 
         var uri = buildRemoveUri('/gerenciamento-financeiro');
-        print('[DELETE_TX] Tentando: $uri');
         resp = await http.get(uri).timeout(const Duration(seconds: 10));
-        print('[DELETE_TX] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 100 ? 100 : resp.body.length)}');
 
         if (resp.statusCode == 404 && resp.body.toLowerCase().contains('<!doctype html>')) {
           uri = buildRemoveUri('');
-          print('[DELETE_TX] Fallback sem prefixo: $uri');
           resp = await http.get(uri).timeout(const Duration(seconds: 10));
-          print('[DELETE_TX] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 100 ? 100 : resp.body.length)}');
         }
       } else {
         bool isRouteMismatch(http.Response r) {
@@ -244,8 +340,6 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
         var deleteUri = buildDeleteUri('/gerenciamento-financeiro');
 
-        print('[DELETE_TX][MOBILE] DELETE: $deleteUri');
-
         resp = await http
             .delete(
               deleteUri,
@@ -253,30 +347,18 @@ class _TransactionsPageState extends State<TransactionsPage> {
             )
             .timeout(const Duration(seconds: 10));
 
-        print(
-          '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-        );
-
         if (resp.statusCode == 404 || resp.statusCode == 405) {
           final fallbackUri = buildRemoveUri('/gerenciamento-financeiro');
-
-          print('[DELETE_TX][MOBILE] Fallback GET remove: $fallbackUri');
           resp = await http
               .get(
                 fallbackUri,
                 headers: {'Content-Type': 'application/json'},
               )
               .timeout(const Duration(seconds: 10));
-
-          print(
-            '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-          );
         }
 
         if (resp.statusCode == 404 && isRouteMismatch(resp)) {
           deleteUri = buildDeleteUri('');
-
-          print('[DELETE_TX][MOBILE] Fallback sem prefixo (DELETE): $deleteUri');
           resp = await http
               .delete(
                 deleteUri,
@@ -284,24 +366,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
               )
               .timeout(const Duration(seconds: 10));
 
-          print(
-            '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-          );
-
           if (resp.statusCode == 404 || resp.statusCode == 405) {
             final fallbackUri = buildRemoveUri('');
-
-            print('[DELETE_TX][MOBILE] Fallback sem prefixo (GET remove): $fallbackUri');
             resp = await http
                 .get(
                   fallbackUri,
                   headers: {'Content-Type': 'application/json'},
                 )
                 .timeout(const Duration(seconds: 10));
-
-            print(
-              '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-            );
           }
         }
       }
@@ -348,6 +420,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   void _applyFilters() {
     setState(() {
+      _currentItems = []; // Limpar para forçar reload
       _future = _fetch();
     });
   }
@@ -362,6 +435,25 @@ class _TransactionsPageState extends State<TransactionsPage> {
         elevation: 0,
       ),
       extendBodyBehindAppBar: true,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => AddTransactionPage(userId: widget.userId),
+            ),
+          );
+          if (changed == true && mounted) {
+            setState(() {
+              _currentItems = [];
+              _future = _fetch();
+            });
+            financeRefreshTick.value = financeRefreshTick.value + 1;
+          }
+        },
+        backgroundColor: const Color(0xFF00C9A7),
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
+      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -418,7 +510,25 @@ class _TransactionsPageState extends State<TransactionsPage> {
                       }
 
                       final items = snapshot.data ?? <_TxItem>[];
-                      if (items.isEmpty) {
+                      
+                      // Sincronizar _currentItems com items do snapshot quando completa
+                      if (snapshot.connectionState == ConnectionState.done && items.isNotEmpty) {
+                        // Só atualizar se _currentItems está vazio (primeiro load ou após mudança de mês)
+                        if (_currentItems.isEmpty) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() {
+                                _currentItems = List.from(items);
+                              });
+                            }
+                          });
+                        }
+                      }
+                      
+                      // Renderizar _currentItems se disponível, senão items do snapshot
+                      final displayItems = _currentItems.isNotEmpty ? _currentItems : items;
+                      
+                      if (displayItems.isEmpty) {
                         return Center(
                           child: Text(
                             'Nenhuma transação neste mês.',
@@ -428,14 +538,16 @@ class _TransactionsPageState extends State<TransactionsPage> {
                       }
 
                       return ListView.separated(
-                        itemCount: items.length,
+                        itemCount: displayItems.length,
                         separatorBuilder: (_, __) => Divider(height: 1, color: Colors.white.withOpacity(0.08)),
                         itemBuilder: (context, index) {
-                          final item = items[index];
+                          final item = displayItems[index];
                           return _TxRow(
                             item: item,
                             onEdit: () => _editTransaction(item.id),
                             onDelete: () => _deleteTransaction(item.id),
+                            onViewAttachments: () => _viewAttachments(item.id, item.description),
+                            onTogglePaid: (v) => _setPaid(item.id, v),
                           );
                         },
                       );
@@ -576,6 +688,7 @@ class _TxItem {
   final double amount;
   final String type;
   final bool isRecurring;
+  final bool isPaid;
   final DateTime? date;
   final String? categoryName;
   final Color? categoryColor;
@@ -586,6 +699,7 @@ class _TxItem {
     required this.amount,
     required this.type,
     required this.isRecurring,
+    required this.isPaid,
     required this.date,
     required this.categoryName,
     required this.categoryColor,
@@ -596,11 +710,15 @@ class _TxRow extends StatelessWidget {
   final _TxItem item;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onViewAttachments;
+  final ValueChanged<bool> onTogglePaid;
 
   const _TxRow({
     required this.item,
     required this.onEdit,
     required this.onDelete,
+    required this.onViewAttachments,
+    required this.onTogglePaid,
   });
 
   @override
@@ -613,6 +731,7 @@ class _TxRow extends StatelessWidget {
         : '';
     final catColor = item.categoryColor ?? Colors.white.withOpacity(0.25);
     final catName = item.categoryName ?? '';
+    final isExpense = item.type == 'expense';
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -645,23 +764,61 @@ class _TxRow extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$sign R\$ ${item.amount.toStringAsFixed(2)}',
-            style: TextStyle(color: amountColor, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(width: 10),
-          IconButton(
-            onPressed: onEdit,
-            icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 18),
-          ),
-          IconButton(
-            onPressed: onDelete,
-            icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 18),
-          ),
-        ],
+      trailing: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isExpense)
+              Transform.scale(
+                scale: 0.9,
+                child: Switch(
+                  value: item.isPaid,
+                  onChanged: onTogglePaid,
+                  activeColor: const Color(0xFF00C9A7),
+                  activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+                ),
+              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$sign R\$ ${item.amount.toStringAsFixed(2)}',
+                  style: TextStyle(color: amountColor, fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+                if (isExpense) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    item.isPaid ? 'Pago' : 'Pendente',
+                    style: TextStyle(
+                      color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: onViewAttachments,
+              icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 18),
+              tooltip: 'Comprovantes',
+            ),
+            IconButton(
+              onPressed: onEdit,
+              icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 18),
+              tooltip: 'Editar',
+            ),
+            IconButton(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 18),
+              tooltip: 'Excluir',
+            ),
+          ],
+        ),
       ),
     );
   }

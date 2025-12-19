@@ -153,15 +153,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         );
 
         var uri = buildRemoveUri('/gerenciamento-financeiro');
-        print('[DELETE_TX] Tentando: $uri');
         resp = await http.get(uri).timeout(const Duration(seconds: 10));
-        print('[DELETE_TX] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 100 ? 100 : resp.body.length)}');
 
         if (resp.statusCode == 404 && resp.body.toLowerCase().contains('<!doctype html>')) {
           uri = buildRemoveUri('');
-          print('[DELETE_TX] Fallback sem prefixo: $uri');
           resp = await http.get(uri).timeout(const Duration(seconds: 10));
-          print('[DELETE_TX] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 100 ? 100 : resp.body.length)}');
         }
       } else {
         bool isRouteMismatch(http.Response r) {
@@ -180,8 +176,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
         var deleteUri = buildDeleteUri('/gerenciamento-financeiro');
 
-        print('[DELETE_TX][MOBILE] DELETE: $deleteUri');
-
         resp = await http
             .delete(
               deleteUri,
@@ -189,30 +183,18 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             )
             .timeout(const Duration(seconds: 10));
 
-        print(
-          '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-        );
-
         if (resp.statusCode == 404 || resp.statusCode == 405) {
           final fallbackUri = buildRemoveUri('/gerenciamento-financeiro');
-
-          print('[DELETE_TX][MOBILE] Fallback GET remove: $fallbackUri');
           resp = await http
               .get(
                 fallbackUri,
                 headers: {'Content-Type': 'application/json'},
               )
               .timeout(const Duration(seconds: 10));
-
-          print(
-            '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-          );
         }
 
         if (resp.statusCode == 404 && isRouteMismatch(resp)) {
           deleteUri = buildDeleteUri('');
-
-          print('[DELETE_TX][MOBILE] Fallback sem prefixo (DELETE): $deleteUri');
           resp = await http
               .delete(
                 deleteUri,
@@ -220,24 +202,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               )
               .timeout(const Duration(seconds: 10));
 
-          print(
-            '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-          );
-
           if (resp.statusCode == 404 || resp.statusCode == 405) {
             final fallbackUri = buildRemoveUri('');
-
-            print('[DELETE_TX][MOBILE] Fallback sem prefixo (GET remove): $fallbackUri');
             resp = await http
                 .get(
                   fallbackUri,
                   headers: {'Content-Type': 'application/json'},
                 )
                 .timeout(const Duration(seconds: 10));
-
-            print(
-              '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-            );
           }
         }
       }
@@ -304,7 +276,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       if (_amountFocusNode.hasFocus) {
         final text = _descriptionController.text.trim();
         if (text.length >= 3 && !_suggestingCategory && !_categoryGenerated) {
-          print('[AMOUNT_FOCUS] Gerando categoria...');
           _suggestCategory(text);
         }
       }
@@ -325,12 +296,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         '$apiBaseUrl/gerenciamento-financeiro/api/transactions/${widget.transactionId}?user_id=${widget.userId}',
       );
 
-      print('[EDIT_TX] GET: $uri');
-
       final resp = await http.get(uri, headers: {'Content-Type': 'application/json'});
-
-      print('[EDIT_TX] Status: ${resp.statusCode}');
-      print('[EDIT_TX] Body: ${resp.body}');
 
       Map<String, dynamic> data;
       try {
@@ -600,7 +566,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   Future<void> _suggestCategory(String description) async {
     // Evitar múltiplas chamadas simultâneas
     if (_suggestingCategory) {
-      print('[SUGGEST_CAT] Já está processando, ignorando...');
       return;
     }
     
@@ -638,7 +603,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       if (resp.statusCode != 200) {
         final msg = data?['message']?.toString();
         final preview = resp.body.length > 180 ? resp.body.substring(0, 180) : resp.body;
-        print('[SUGGEST_CAT] HTTP ${resp.statusCode} body: $preview');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -684,12 +648,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         return;
       }
 
-      print('[SUGGEST_CAT] Erro da API: ${data['message']}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data['message']?.toString() ?? 'Erro ao sugerir categoria'),
-            backgroundColor: Colors.orange,
+            content: Text(data['message']?.toString() ?? 'Falha ao sugerir categoria.'),
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
         setState(() {
@@ -697,12 +660,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         });
       }
     } on TimeoutException catch (e) {
-      print('[SUGGEST_CAT] Timeout: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('A IA está demorando para responder. Tente novamente.'),
-            backgroundColor: Colors.orange,
+            content: Text('Timeout ao sugerir categoria: $e'),
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
         setState(() {
@@ -710,12 +672,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         });
       }
     } catch (e) {
-      print('[SUGGEST_CAT] Erro: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Erro ao conectar com IA. Verifique sua conexão.'),
-            backgroundColor: Colors.red,
+            content: Text('Falha ao sugerir categoria.'),
+            backgroundColor: Color(0xFFEF4444),
           ),
         );
         setState(() {
@@ -794,9 +755,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             : null,
       };
 
-      print('[ADD_TX] URL: $uri');
-      print('[ADD_TX] Payload: $payload');
-
       final resp = _isEditMode
           ? await http.put(
               uri,
@@ -808,9 +766,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode(payload),
             ).timeout(const Duration(seconds: 10));
-
-      print('[ADD_TX] Status: ${resp.statusCode}');
-      print('[ADD_TX] Body: ${resp.body}');
 
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
 
@@ -831,7 +786,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       }
     } catch (e) {
-      print('[ADD_TX] ERRO: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

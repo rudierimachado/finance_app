@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'add_transaction.dart';
+import 'config.dart';
 import 'dashboard.dart';
 import 'transactions_page.dart';
 
@@ -26,7 +28,7 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           DashboardPage(userId: widget.userId),
           TransactionsPage(userId: widget.userId),
-          const _SettingsPlaceholderPage(),
+          _SettingsPlaceholderPage(userId: widget.userId),
         ],
       ),
       bottomNavigationBar: Container(
@@ -67,26 +69,45 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 class _SettingsPlaceholderPage extends StatelessWidget {
-  const _SettingsPlaceholderPage();
+  final int userId;
+  
+  const _SettingsPlaceholderPage({required this.userId});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
-        ),
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => AddTransactionPage(userId: userId),
+            ),
+          );
+          if (changed == true) {
+            financeRefreshTick.value = financeRefreshTick.value + 1;
+          }
+        },
+        backgroundColor: const Color(0xFF00C9A7),
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
       ),
-      child: const SafeArea(
-        child: Center(
-          child: Text(
-            'Ajustes',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+          ),
+        ),
+        child: const SafeArea(
+          child: Center(
+            child: Text(
+              'Ajustes',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),

@@ -9,13 +9,15 @@ import 'package:flutter/foundation.dart';
 /// Para produção:
 /// - Usa https://nexusrdr.com.br
 String getApiBaseUrl() {
-  if (kDebugMode) {
-    // Em debug mode: usa localhost (funciona com ADB reverse para mobile via USB)
-    return const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:5000');
-  } else {
-    // Em produção
-    return const String.fromEnvironment('API_BASE_URL', defaultValue: 'https://nexusrdr.com.br');
+  // SEMPRE usar produção em release
+  if (kReleaseMode) {
+    return 'https://nexusrdr.com.br';
   }
+
+  // Debug/Profile: localhost (funciona com ADB reverse via USB)
+  return 'http://localhost:5000';
 }
 
 final String apiBaseUrl = getApiBaseUrl();
+
+final ValueNotifier<int> financeRefreshTick = ValueNotifier<int>(0);

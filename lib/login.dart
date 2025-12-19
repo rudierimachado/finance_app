@@ -116,6 +116,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
     try {
       final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/login');
+
       final response = await http.post(
         uri,
         headers: {
@@ -167,7 +168,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     } catch (e) {
       HapticFeedback.vibrate();
       setState(() {
-        _errorMessage = 'Não foi possível conectar ao servidor.';
+        _errorMessage = 'Não foi possível conectar ao servidor: ${e.runtimeType}: $e';
       });
     } finally {
       if (mounted) {
@@ -616,7 +617,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            print("Navegando para RegisterPage..."); // Debug
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => const RegisterPage(),
