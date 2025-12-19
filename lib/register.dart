@@ -5,10 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'login.dart';
-
-const String apiBaseUrl = kDebugMode
-    ? (String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:5000'))
-    : (String.fromEnvironment('API_BASE_URL', defaultValue: 'https://nexusrdr.com.br'));
+import 'config.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});

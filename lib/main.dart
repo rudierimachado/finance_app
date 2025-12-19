@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'login.dart';
 import 'register.dart';
+import 'config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  final apiBaseUrl = kDebugMode
-      ? (const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:5000'))
-      : (const String.fromEnvironment('API_BASE_URL', defaultValue: 'https://nexusrdr.com.br'));
   
   print('[MAIN] API_BASE_URL: $apiBaseUrl');
   

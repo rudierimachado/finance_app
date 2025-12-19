@@ -4,13 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'dashboard.dart';
+
+import 'home_shell.dart';
 import 'register.dart';
-
-
-const String apiBaseUrl = kDebugMode
-    ? (String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:5000'))
-    : (String.fromEnvironment('API_BASE_URL', defaultValue: 'https://nexusrdr.com.br'));
+import 'config.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -141,14 +138,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         if (mounted) {
           final user = data['user'] as Map<String, dynamic>?;
           final userId = (user?['id'] as num?)?.toInt() ?? 0;
-          final userEmail = user?['email']?.toString() ?? email;
 
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
-              pageBuilder: (context, animation, _) => DashboardPage(
-                userId: userId,
-                email: userEmail,
-              ),
+              pageBuilder: (context, animation, _) => HomeShell(userId: userId),
               transitionDuration: const Duration(milliseconds: 600),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return SlideTransition(

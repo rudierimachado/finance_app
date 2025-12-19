@@ -1,25 +1,19 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'add_transaction.dart';
-import 'transactions_page.dart';
-
-const String apiBaseUrl = kDebugMode
-    ? (String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:5000'))
-    : (String.fromEnvironment('API_BASE_URL', defaultValue: 'https://nexusrdr.com.br'));
+import 'attachments_page.dart';
+import 'config.dart';
 
 class DashboardPage extends StatefulWidget {
   final int userId;
-  final String email;
 
   const DashboardPage({
     super.key,
     required this.userId,
-    required this.email,
   });
 
   @override
@@ -32,6 +26,9 @@ class _DashboardPageState extends State<DashboardPage> {
   double? _currentBalance;
   double? _currentIncomePaid;
   double? _currentExpensePaid;
+
+  // Cache de dados por mês/ano para evitar refetch
+  final Map<String, _DashboardData> _dataCache = {};
 
   void _syncLocalTotalsFromServer(_DashboardData data) {
     _currentIncomePaid = data.monthIncomePaid;
@@ -72,8 +69,18 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<_DashboardData> _fetchDashboard() async {
+    return _fetchDashboardFor(_year, _month);
+  }
+
+  Future<_DashboardData> _fetchDashboardFor(int year, int month) async {
+    // Verifica cache primeiro
+    final cacheKey = '$year-$month';
+    if (_dataCache.containsKey(cacheKey)) {
+      return _dataCache[cacheKey]!;
+    }
+
     final uri = Uri.parse(
-      '$apiBaseUrl/gerenciamento-financeiro/api/dashboard?user_id=${widget.userId}&year=$_year&month=$_month',
+      '$apiBaseUrl/gerenciamento-financeiro/api/dashboard?user_id=${widget.userId}&year=$year&month=$month',
     );
 
     final response = await http.get(
@@ -108,7 +115,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ));
       }
 
-      return _DashboardData(
+      final dashData = _DashboardData(
         balance: balance,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
@@ -119,6 +126,10 @@ class _DashboardPageState extends State<DashboardPage> {
         expenseByCategory: categories,
         latestTransactions: _parseLatestTransactions(data['latest_transactions']),
       );
+
+      // Armazena no cache
+      _dataCache[cacheKey] = dashData;
+      return dashData;
     }
 
     throw Exception(data['message']?.toString() ?? 'Falha ao carregar dashboard.');
@@ -136,6 +147,10 @@ class _DashboardPageState extends State<DashboardPage> {
           );
           if (changed == true && mounted) {
             setState(() {
+              _clearCache();
+              _currentBalance = null;
+              _currentIncomePaid = null;
+              _currentExpensePaid = null;
               _future = _fetchDashboard();
             });
           }
@@ -188,21 +203,13 @@ class _DashboardPageState extends State<DashboardPage> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          Text(
-                            widget.email,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.75),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
                         ],
                       ),
                     ),
                     IconButton(
                       onPressed: () {
                         setState(() {
+                          _clearCache();
                           _currentBalance = null;
                           _currentIncomePaid = null;
                           _currentExpensePaid = null;
@@ -268,97 +275,11 @@ class _DashboardPageState extends State<DashboardPage> {
                             const SizedBox(height: 10),
                             _PieSection(slices: data.expenseByCategory),
                             const SizedBox(height: 18),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Últimas transações (mês)',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.9),
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () async {
-                                    final changed = await Navigator.of(context).push<bool>(
-                                      MaterialPageRoute(
-                                        builder: (_) => TransactionsPage(userId: widget.userId),
-                                      ),
-                                    );
-                                    if (changed == true && mounted) {
-                                      setState(() {
-                                        _future = _fetchDashboard();
-                                      });
-                                    }
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: const Color(0xFF00C9A7),
-                                  ),
-                                  child: const Text('Ver todas'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            _LatestTransactionsSection(
-                              items: data.latestTransactions,
-                              onEdit: (txId) async {
-                                print('[DASHBOARD] Editar transação ID: $txId');
-                                if (txId <= 0) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('ID inválido para edição.')),
-                                  );
-                                  return;
-                                }
-
-                                final changed = await Navigator.of(context).push<bool>(
-                                  MaterialPageRoute(
-                                    builder: (_) => AddTransactionPage(
-                                      userId: widget.userId,
-                                      transactionId: txId,
-                                    ),
-                                  ),
-                                );
-
-                                if (changed == true && mounted) {
-                                  setState(() {
-                                    _future = _fetchDashboard();
-                                  });
-                                }
-                              },
-                              onDelete: (tx) async {
-                                final txId = tx.id;
-                                if (txId <= 0) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('ID inválido para exclusão.')),
-                                  );
-                                  return;
-                                }
-                                await _deleteTransaction(tx);
-                              },
-                              onTogglePaid: (tx, isPaid) {
-                                // Atualização otimista: muda saldo instantaneamente
-                                _applyOptimisticPaidChange(tx, isPaid);
-                                _setTransactionPaid(tx, isPaid);
-                              },
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.06),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: Colors.white.withOpacity(0.10)),
-                              ),
-                              child: Text(
-                                'Aqui entraremos com receitas, despesas, categorias e gráficos.',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.75),
-                                  height: 1.4,
-                                ),
-                              ),
+                            _PreviousMonthComparisonCard(
+                              userId: widget.userId,
+                              currentYear: _year,
+                              currentMonth: _month,
+                              current: data,
                             ),
                           ],
                         ),
@@ -373,265 +294,239 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+}
 
-  Future<void> _deleteTransaction(_TxItem tx) async {
-    final txId = tx.id;
+class _PreviousMonthComparisonCard extends StatefulWidget {
+  final int userId;
+  final int currentYear;
+  final int currentMonth;
+  final _DashboardData current;
 
-    String? scope;
-    if (tx.isRecurring) {
-      scope = await showDialog<String>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF0F2027),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: BorderSide(color: Colors.white.withOpacity(0.10)),
-            ),
-            title: const Text(
-              'Excluir recorrência',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-            ),
-            content: Text(
-              'Essa transação é recorrente. Deseja excluir apenas esta ou todas?',
-              style: TextStyle(color: Colors.white.withOpacity(0.75)),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop('single'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF00C9A7),
-                ),
-                child: const Text('Só esta'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop('all'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFEF4444),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                child: const Text('Todas'),
-              ),
-            ],
-          );
-        },
-      );
-      if (scope == null) return;
+  const _PreviousMonthComparisonCard({
+    super.key,
+    required this.userId,
+    required this.currentYear,
+    required this.currentMonth,
+    required this.current,
+  });
+
+  @override
+  State<_PreviousMonthComparisonCard> createState() => _PreviousMonthComparisonCardState();
+}
+
+class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCard> {
+  Future<_DashboardData>? _previousFuture;
+  bool _isExpanded = false;
+
+  void _loadPreviousMonth() {
+    var y = widget.currentYear;
+    var m = widget.currentMonth - 1;
+    if (m <= 0) {
+      m = 12;
+      y = y - 1;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Excluir transação'),
-          content: const Text('Tem certeza que deseja excluir esta transação?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Excluir'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      http.Response resp;
-      if (kIsWeb) {
-        Uri buildRemoveUri(String prefix) => Uri.parse(
-          '$apiBaseUrl$prefix/api/transactions/$txId/remove?user_id=${widget.userId}${scope != null ? '&scope=$scope' : ''}',
-        );
-
-        var uri = buildRemoveUri('/gerenciamento-financeiro');
-        print('[DELETE_TX] Tentando: $uri');
-        resp = await http.get(uri).timeout(const Duration(seconds: 10));
-        print('[DELETE_TX] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 100 ? 100 : resp.body.length)}');
-
-        if (resp.statusCode == 404 && resp.body.toLowerCase().contains('<!doctype html>')) {
-          uri = buildRemoveUri('');
-          print('[DELETE_TX] Fallback sem prefixo: $uri');
-          resp = await http.get(uri).timeout(const Duration(seconds: 10));
-          print('[DELETE_TX] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 100 ? 100 : resp.body.length)}');
-        }
-      } else {
-        bool isRouteMismatch(http.Response r) {
-          final bodyLower = r.body.toLowerCase();
-          return bodyLower.contains('<!doctype html>') ||
-              bodyLower.contains('endpoint não encontrado') ||
-              bodyLower.contains('endpoint nao encontrado');
-        }
-
-        Uri buildDeleteUri(String prefix) => Uri.parse(
-          '$apiBaseUrl$prefix/api/transactions/$txId?user_id=${widget.userId}${scope != null ? '&scope=$scope' : ''}',
-        );
-        Uri buildRemoveUri(String prefix) => Uri.parse(
-          '$apiBaseUrl$prefix/api/transactions/$txId/remove?user_id=${widget.userId}${scope != null ? '&scope=$scope' : ''}',
-        );
-
-        var deleteUri = buildDeleteUri('/gerenciamento-financeiro');
-
-        print('[DELETE_TX][MOBILE] DELETE: $deleteUri');
-
-        resp = await http
-            .delete(
-              deleteUri,
-              headers: {'Content-Type': 'application/json'},
-            )
-            .timeout(const Duration(seconds: 10));
-
-        print(
-          '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-        );
-
-        if (resp.statusCode == 404 || resp.statusCode == 405) {
-          final fallbackUri = buildRemoveUri('/gerenciamento-financeiro');
-
-          print('[DELETE_TX][MOBILE] Fallback GET remove: $fallbackUri');
-          resp = await http
-              .get(
-                fallbackUri,
-                headers: {'Content-Type': 'application/json'},
-              )
-              .timeout(const Duration(seconds: 10));
-
-          print(
-            '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-          );
-        }
-
-        if (resp.statusCode == 404 && isRouteMismatch(resp)) {
-          deleteUri = buildDeleteUri('');
-
-          print('[DELETE_TX][MOBILE] Fallback sem prefixo (DELETE): $deleteUri');
-          resp = await http
-              .delete(
-                deleteUri,
-                headers: {'Content-Type': 'application/json'},
-              )
-              .timeout(const Duration(seconds: 10));
-
-          print(
-            '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-          );
-
-          if (resp.statusCode == 404 || resp.statusCode == 405) {
-            final fallbackUri = buildRemoveUri('');
-
-            print('[DELETE_TX][MOBILE] Fallback sem prefixo (GET remove): $fallbackUri');
-            resp = await http
-                .get(
-                  fallbackUri,
-                  headers: {'Content-Type': 'application/json'},
-                )
-                .timeout(const Duration(seconds: 10));
-
-            print(
-              '[DELETE_TX][MOBILE] Status: ${resp.statusCode}, Body preview: ${resp.body.substring(0, resp.body.length > 180 ? 180 : resp.body.length)}',
-            );
-          }
-        }
-      }
-
-      Map<String, dynamic> data;
-      try {
-        data = jsonDecode(resp.body) as Map<String, dynamic>;
-      } catch (_) {
-        final preview = resp.body.length > 180 ? resp.body.substring(0, 180) : resp.body;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Falha ao excluir (HTTP ${resp.statusCode}): $preview')),
-          );
-        }
-        return;
-      }
-
-      if (resp.statusCode == 200 && data['success'] == true) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transação excluída com sucesso!'),
-            backgroundColor: Color(0xFFEF4444),
-          ),
-        );
-        setState(() {
-          _future = _fetchDashboard();
-        });
-        return;
-      }
-
-      final msg = data['message']?.toString() ?? 'Erro ao excluir transação.';
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Falha ao excluir: ${e.toString()}')),
-        );
-      }
-    }
+    setState(() {
+      _isExpanded = true;
+      _previousFuture = _fetchDashboardFor(widget.userId, y, m);
+    });
   }
 
-  Future<void> _setTransactionPaid(_TxItem tx, bool isPaid) async {
-    // Atualização otimista: atualiza item localmente e recarrega saldo do card
-    try {
-      final uri = Uri.parse(
-        '$apiBaseUrl/gerenciamento-financeiro/api/transactions/${tx.id}?user_id=${widget.userId}',
+  Future<_DashboardData> _fetchDashboardFor(int userId, int year, int month) async {
+    final uri = Uri.parse(
+      '$apiBaseUrl/gerenciamento-financeiro/api/dashboard?user_id=$userId&year=$year&month=$month',
+    );
+
+    final response = await http.get(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode == 200 && (data['success'] == true)) {
+      final balance = (data['balance'] as num).toDouble();
+      final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
+      final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
+      final monthIncomePaid = (data['month_income_paid'] as num? ?? 0).toDouble();
+      final monthExpensePaid = (data['month_expense_paid'] as num? ?? 0).toDouble();
+      final month = (data['month'] as num? ?? 0).toInt();
+      final year = (data['year'] as num? ?? 0).toInt();
+
+      return _DashboardData(
+        balance: balance,
+        monthIncome: monthIncome,
+        monthExpense: monthExpense,
+        monthIncomePaid: monthIncomePaid,
+        monthExpensePaid: monthExpensePaid,
+        month: month,
+        year: year,
+        expenseByCategory: [],
+        latestTransactions: [],
       );
-
-      final resp = await http
-          .put(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(<String, dynamic>{
-              'user_id': widget.userId,
-              'action': 'set_paid',
-              'is_paid': isPaid,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final Map<String, dynamic> data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (resp.statusCode == 200 && data['success'] == true) {
-        // Sucesso: não recarrega o dashboard (UI já atualizou otimisticamente)
-        return;
-      }
-
-      // Falha: reverter UI e mostrar erro
-      final msg = data['message']?.toString() ?? 'Falha ao atualizar pagamento.';
-      if (mounted) {
-        setState(() {
-          _future = _fetchDashboard(); // Recarrega para reverter
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      // Erro de conexão: reverter UI
-      if (mounted) {
-        setState(() {
-          _future = _fetchDashboard(); // Recarrega para reverter
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Falha ao atualizar: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
+
+    throw Exception(data['message']?.toString() ?? 'Falha ao carregar mês anterior.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Comparação com mês anterior',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (!_isExpanded)
+                TextButton.icon(
+                  onPressed: _loadPreviousMonth,
+                  icon: const Icon(Icons.analytics_outlined, size: 18),
+                  label: const Text('Ver'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF00C9A7),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                ),
+            ],
+          ),
+          if (_isExpanded) ...[
+            const SizedBox(height: 10),
+            if (_previousFuture == null)
+              Text(
+                'Clique em "Ver" para carregar.',
+                style: TextStyle(color: Colors.white.withOpacity(0.7)),
+              )
+            else
+              FutureBuilder<_DashboardData>(
+                future: _previousFuture,
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const LinearProgressIndicator(
+                      color: Color(0xFF00C9A7),
+                      backgroundColor: Colors.transparent,
+                    );
+                  }
+
+                  if (snap.hasError) {
+                    return Text(
+                      'Não foi possível carregar o mês anterior.',
+                      style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                    );
+                  }
+
+                  final prev = snap.data;
+                  if (prev == null) {
+                    return Text(
+                      'Sem dados do mês anterior.',
+                      style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                    );
+                  }
+
+                  final deltaBalance = widget.current.balance - prev.balance;
+                  final deltaIncomePaid = widget.current.monthIncomePaid - prev.monthIncomePaid;
+                  final deltaExpensePaid = widget.current.monthExpensePaid - prev.monthExpensePaid;
+
+                  return Column(
+                    children: [
+                      _ComparisonRow(
+                        label: 'Saldo',
+                        value: widget.current.balance,
+                        delta: deltaBalance,
+                        positiveColor: const Color(0xFF10B981),
+                        negativeColor: const Color(0xFFEF4444),
+                      ),
+                      const SizedBox(height: 8),
+                      _ComparisonRow(
+                        label: 'Receitas pagas',
+                        value: widget.current.monthIncomePaid,
+                        delta: deltaIncomePaid,
+                        positiveColor: const Color(0xFF10B981),
+                        negativeColor: const Color(0xFFEF4444),
+                      ),
+                      const SizedBox(height: 8),
+                      _ComparisonRow(
+                        label: 'Despesas pagas',
+                        value: widget.current.monthExpensePaid,
+                        delta: deltaExpensePaid,
+                        positiveColor: const Color(0xFFEF4444),
+                        negativeColor: const Color(0xFF10B981),
+                      ),
+                    ],
+                  );
+                },
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ComparisonRow extends StatelessWidget {
+  final String label;
+  final double value;
+  final double delta;
+  final Color positiveColor;
+  final Color negativeColor;
+
+  const _ComparisonRow({
+    required this.label,
+    required this.value,
+    required this.delta,
+    required this.positiveColor,
+    required this.negativeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isPositive = delta >= 0;
+    final deltaColor = isPositive ? positiveColor : negativeColor;
+    final deltaSign = isPositive ? '+' : '-';
+    final deltaAbs = delta.abs();
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: Colors.white.withOpacity(0.75), fontWeight: FontWeight.w600),
+          ),
+        ),
+        Text(
+          'R\$ ${value.toStringAsFixed(2)}',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: deltaColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: deltaColor.withOpacity(0.35)),
+          ),
+          child: Text(
+            '$deltaSign R\$ ${deltaAbs.toStringAsFixed(2)}',
+            style: TextStyle(color: deltaColor, fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -726,9 +621,6 @@ extension on _DashboardPageState {
       } else {
         _month -= 1;
       }
-      _currentBalance = null;
-      _currentIncomePaid = null;
-      _currentExpensePaid = null;
       _future = _fetchDashboard();
     });
   }
@@ -741,11 +633,13 @@ extension on _DashboardPageState {
       } else {
         _month += 1;
       }
-      _currentBalance = null;
-      _currentIncomePaid = null;
-      _currentExpensePaid = null;
       _future = _fetchDashboard();
     });
+  }
+
+  // Limpa cache quando adiciona/edita transação
+  void _clearCache() {
+    _dataCache.clear();
   }
 }
 
@@ -932,7 +826,7 @@ class _MiniStatCard extends StatelessWidget {
 class _PieSection extends StatelessWidget {
   final List<_CategorySlice> slices;
 
-  const _PieSection({required this.slices});
+  const _PieSection({super.key, required this.slices});
 
   @override
   Widget build(BuildContext context) {
@@ -1076,7 +970,7 @@ class _PieChartPainter extends CustomPainter {
 class _BalanceCard extends StatelessWidget {
   final double balance;
 
-  const _BalanceCard({required this.balance});
+  const _BalanceCard({super.key, required this.balance});
 
   @override
   Widget build(BuildContext context) {
@@ -1130,12 +1024,14 @@ class _BalanceCard extends StatelessWidget {
 
 class _LatestTransactionsSection extends StatelessWidget {
   final List<_TxItem> items;
+  final int userId;
   final void Function(int transactionId) onEdit;
   final void Function(_TxItem transaction) onDelete;
   final void Function(_TxItem transaction, bool isPaid) onTogglePaid;
 
   _LatestTransactionsSection({
     required this.items,
+    required this.userId,
     required this.onEdit,
     required this.onDelete,
     required this.onTogglePaid,
@@ -1169,7 +1065,7 @@ class _LatestTransactionsSection extends StatelessWidget {
       child: Column(
         children: [
           for (int i = 0; i < items.length; i++) ...[
-            _TxRow(item: items[i], onEdit: onEdit, onDelete: onDelete, onTogglePaid: onTogglePaid),
+            _TxRow(item: items[i], userId: userId, onEdit: onEdit, onDelete: onDelete, onTogglePaid: onTogglePaid),
             if (i != items.length - 1)
               Divider(height: 1, color: Colors.white.withOpacity(0.08)),
           ],
@@ -1181,12 +1077,14 @@ class _LatestTransactionsSection extends StatelessWidget {
 
 class _TxRow extends StatefulWidget {
   final _TxItem item;
+  final int userId;
   final void Function(int transactionId) onEdit;
   final void Function(_TxItem transaction) onDelete;
   final void Function(_TxItem transaction, bool isPaid) onTogglePaid;
 
   _TxRow({
     required this.item,
+    required this.userId,
     required this.onEdit,
     required this.onDelete,
     required this.onTogglePaid,
@@ -1330,6 +1228,22 @@ class _TxRowState extends State<_TxRow> {
                 inactiveTrackColor: Colors.white.withOpacity(0.15),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
+            ),
+          if (_localIsPaid)
+            IconButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AttachmentsPage(
+                      userId: widget.userId,
+                      transactionId: widget.item.id,
+                      transactionDescription: widget.item.description,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.attach_file, color: Color(0xFF00C9A7)),
+              tooltip: ' comprovantes',
             ),
           IconButton(
             onPressed: () => widget.onEdit(widget.item.id),
