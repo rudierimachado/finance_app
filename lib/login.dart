@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'dashboard.dart';
 import 'register.dart';
 
 
@@ -138,9 +139,16 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         await Future.delayed(const Duration(milliseconds: 800));
         
         if (mounted) {
+          final user = data['user'] as Map<String, dynamic>?;
+          final userId = (user?['id'] as num?)?.toInt() ?? 0;
+          final userEmail = user?['email']?.toString() ?? email;
+
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
-              pageBuilder: (context, animation, _) => const FinanceHomePage(),
+              pageBuilder: (context, animation, _) => DashboardPage(
+                userId: userId,
+                email: userEmail,
+              ),
               transitionDuration: const Duration(milliseconds: 600),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return SlideTransition(

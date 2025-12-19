@@ -130,18 +130,18 @@ class _RegisterPageState extends State<RegisterPage> with TickerProviderStateMix
     final password = _passwordController.text;
 
     try {
-      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/register');
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/register');
       final response = await http.post(
         uri,
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: {
+        body: jsonEncode({
           'name': name,
           'email': email,
           'password': password,
           'confirm_password': _confirmPasswordController.text,
-        },
+        }),
       );
 
       if (response.statusCode == 200) {
