@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login.dart';
 import 'register.dart';
-import 'config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,9 +13,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'Nexus Financeiro',
-      home: LoginPage(),
+      routes: {
+        '/login': (_) => const LoginPage(),
+        '/register': (_) => const RegisterPage(),
+      },
+      home: const LoginPage(),
     );
   }
 }

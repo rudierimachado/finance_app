@@ -764,58 +764,76 @@ class _TxRow extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerRight,
+      trailing: SizedBox(
+        width: isExpense ? 240 : 180,
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            if (isExpense)
-              Transform.scale(
-                scale: 0.9,
-                child: Switch(
-                  value: item.isPaid,
-                  onChanged: onTogglePaid,
-                  activeColor: const Color(0xFF00C9A7),
-                  activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
-                ),
-              ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '$sign R\$ ${item.amount.toStringAsFixed(2)}',
-                  style: TextStyle(color: amountColor, fontWeight: FontWeight.w800, fontSize: 14),
-                ),
-                if (isExpense) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    item.isPaid ? 'Pago' : 'Pendente',
-                    style: TextStyle(
-                      color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+            if (isExpense) ...[
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Transform.scale(
+                    scale: 0.75,
+                    child: Switch(
+                      value: item.isPaid,
+                      onChanged: onTogglePaid,
+                      activeColor: const Color(0xFF00C9A7),
+                      activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
-              ],
+              ),
+              const SizedBox(width: 4),
+            ],
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$sign R\$ ${item.amount.toStringAsFixed(2)}',
+                    style: TextStyle(color: amountColor, fontWeight: FontWeight.w800, fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (isExpense) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      item.isPaid ? 'Pago' : 'Pendente',
+                      style: TextStyle(
+                        color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             IconButton(
               onPressed: onViewAttachments,
-              icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 18),
+              icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 16),
               tooltip: 'Comprovantes',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             ),
             IconButton(
               onPressed: onEdit,
-              icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 18),
+              icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 16),
               tooltip: 'Editar',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             ),
             IconButton(
               onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 18),
+              icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
               tooltip: 'Excluir',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             ),
           ],
         ),

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'home_shell.dart';
 import 'register.dart';
@@ -35,10 +37,136 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool _rememberMe = false;
   String? _errorMessage;
 
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
+  bool _biometricAvailable = false;
+  bool _biometricEnabled = false;
+
   @override
   void initState() {
     super.initState();
     _initAnimations();
+    _checkBiometric();
+  }
+
+  Future<void> _checkBiometric() async {
+    try {
+      final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isDeviceSupported = await _localAuth.isDeviceSupported();
+      setState(() {
+        _biometricAvailable = canCheck && isDeviceSupported;
+        _biometricEnabled = enabledRaw == 'true';
+      });
+
+      // Tentar login automático com biometria se credenciais salvas
+      if (_biometricAvailable && _biometricEnabled) {
+        final savedEmail = await _secureStorage.read(key: 'saved_email');
+        if (savedEmail != null) {
+          _tryBiometricLogin();
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _biometricAvailable = false;
+        _biometricEnabled = false;
+      });
+    }
+  }
+
+  Future<void> _tryBiometricLogin() async {
+    try {
+      if (kDebugMode) {
+        print('[BIOMETRIC] Iniciando tentativa de login biométrico');
+      }
+      
+      final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+      if (kDebugMode) {
+        print('[BIOMETRIC] biometric_enabled = $enabledRaw');
+      }
+      if (enabledRaw != 'true') {
+        if (kDebugMode) {
+          print('[BIOMETRIC] Biometria não habilitada, abortando');
+        }
+        return;
+      }
+      
+      if (!_biometricAvailable) {
+        if (kDebugMode) {
+          print('[BIOMETRIC] Biometria não disponível no dispositivo, abortando');
+        }
+        return;
+      }
+
+      if (kDebugMode) {
+        print('[BIOMETRIC] Solicitando autenticação biométrica...');
+      }
+      
+      final authenticated = await _localAuth.authenticate(
+        localizedReason: 'Use sua digital para entrar',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (kDebugMode) {
+        print('[BIOMETRIC] Resultado da autenticação: $authenticated');
+      }
+
+      if (authenticated) {
+        final savedEmail = await _secureStorage.read(key: 'saved_email');
+        final savedPassword = await _secureStorage.read(key: 'saved_password');
+
+        if (kDebugMode) {
+          print('[BIOMETRIC] Email salvo: ${savedEmail != null ? "SIM" : "NÃO"}');
+          print('[BIOMETRIC] Senha salva: ${savedPassword != null ? "SIM" : "NÃO"}');
+        }
+
+        if (savedEmail != null && savedPassword != null) {
+          if (kDebugMode) {
+            print('[BIOMETRIC] Preenchendo credenciais e chamando _submit()');
+          }
+          _emailController.text = savedEmail;
+          _passwordController.text = savedPassword;
+          await _submit();
+          if (kDebugMode) {
+            print('[BIOMETRIC] _submit() concluído');
+          }
+        } else {
+          if (kDebugMode) {
+            print('[BIOMETRIC] Credenciais ausentes, mostrando erro');
+          }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Faça login primeiro para usar a biometria.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          setState(() {
+            _errorMessage = 'Faça login para salvar suas credenciais.';
+          });
+          return;
+        }
+      } else {
+        if (kDebugMode) {
+          print('[BIOMETRIC] Autenticação falhou ou foi cancelada');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[BIOMETRIC] Erro durante login biométrico: $e');
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro na biometria: $e')),
+      );
+    }
   }
 
   void _initAnimations() {
@@ -132,10 +260,22 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
       if (response.statusCode == 200 && (data['success'] == true)) {
         if (!mounted) return;
-        
+
+        // Salvar credenciais automaticamente para uso com biometria
+        if (kDebugMode) {
+          print('[LOGIN] Salvando credenciais: email=$email');
+        }
+        await _secureStorage.write(key: 'saved_email', value: email);
+        await _secureStorage.write(key: 'saved_password', value: password);
+        final verifyEmail = await _secureStorage.read(key: 'saved_email');
+        final verifyPassword = await _secureStorage.read(key: 'saved_password');
+        if (kDebugMode) {
+          print('[LOGIN] Verificação storage: email=${verifyEmail != null ? "SIM" : "NÃO"}, senha=${verifyPassword != null ? "SIM" : "NÃO"}');
+        }
+
         HapticFeedback.heavyImpact();
         await Future.delayed(const Duration(milliseconds: 800));
-        
+
         if (mounted) {
           final user = data['user'] as Map<String, dynamic>?;
           final userId = (user?['id'] as num?)?.toInt() ?? 0;
@@ -364,6 +504,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             ],
             const SizedBox(height: 32),
             _buildLoginButton(),
+            if (_biometricAvailable && _biometricEnabled) ...[
+              const SizedBox(height: 16),
+              _buildBiometricButton(),
+            ],
             const SizedBox(height: 24),
             _buildDivider(),
             const SizedBox(height: 24),
@@ -569,6 +713,45 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       letterSpacing: 0.5,
                     ),
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBiometricButton() {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF00C9A7), width: 2),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _isLoading ? null : _tryBiometricLogin,
+          child: const Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.fingerprint,
+                  color: Color(0xFF00C9A7),
+                  size: 28,
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Entrar com digital',
+                  style: TextStyle(
+                    color: Color(0xFF00C9A7),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
