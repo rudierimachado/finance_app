@@ -28,12 +28,18 @@ class _WorkspaceSelectorPageState extends State<WorkspaceSelectorPage> {
   Future<void> _loadWorkspaces() async {
     try {
       final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces?user_id=${widget.userId}');
+      print('[WORKSPACE_SELECTOR] ========== DEBUG CRÍTICO ==========');
       print('[WORKSPACE_SELECTOR] Carregando workspaces para userId=${widget.userId}');
-      print('[WORKSPACE_SELECTOR] URL: $uri');
+      print('[WORKSPACE_SELECTOR] URL COMPLETA: $uri');
+      print('[WORKSPACE_SELECTOR] API BASE URL: $apiBaseUrl');
+      print('[WORKSPACE_SELECTOR] ==========================================');
       
       final response = await http.get(uri, headers: {'Content-Type': 'application/json'});
+      print('[WORKSPACE_SELECTOR] ========== RESPOSTA SERVIDOR ==========');
       print('[WORKSPACE_SELECTOR] Status: ${response.statusCode}');
-      print('[WORKSPACE_SELECTOR] Body: ${response.body}');
+      print('[WORKSPACE_SELECTOR] Headers: ${response.headers}');
+      print('[WORKSPACE_SELECTOR] Body COMPLETO: ${response.body}');
+      print('[WORKSPACE_SELECTOR] ==========================================');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
