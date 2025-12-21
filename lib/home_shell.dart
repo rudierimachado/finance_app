@@ -244,7 +244,8 @@ class _ShareDialogState extends State<ShareDialog> {
       String message = 'Convite enviado!';
       if (resp.statusCode == 200 || resp.statusCode == 201) {
         if (!mounted) return;
-        Navigator.of(context).pop(message);
+        Navigator.of(context).pop(true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
         return;
       } else if (resp.statusCode == 400) {
         final data = jsonDecode(resp.body);
