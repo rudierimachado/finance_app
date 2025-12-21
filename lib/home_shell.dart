@@ -1,15 +1,17 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'add_transaction.dart';
 import 'config.dart';
 import 'dashboard.dart';
 import 'transactions_page.dart';
+import 'workspace_selector.dart';
 
 class HomeShell extends StatefulWidget {
   final int userId;
@@ -130,6 +132,257 @@ class _HomeShellState extends State<HomeShell> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class ShareDialog extends StatefulWidget {
+  final int userId;
+  const ShareDialog({super.key, required this.userId});
+
+  @override
+  State<ShareDialog> createState() => _ShareDialogState();
+}
+
+class _ShareDialogState extends State<ShareDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _emailController = TextEditingController();
+  String _role = 'viewer';
+  bool _isLoading = false;
+  bool _loadingWorkspace = true;
+  String? _workspaceName;
+  int? _workspaceId;
+  String? _workspaceError;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveWorkspace();
+  }
+
+  Future<void> _loadActiveWorkspace() async {
+    setState(() {
+      _loadingWorkspace = true;
+      _workspaceError = null;
+    });
+
+    final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/user/active-workspace?user_id=${widget.userId}');
+    try {
+      final resp = await http.get(uri, headers: {'Content-Type': 'application/json'});
+      final code = resp.statusCode;
+      if (kDebugMode) {
+        print('[INVITE][ACTIVE_WS] status=$code body=${resp.body}');
+      }
+
+      if (code == 200) {
+        final data = jsonDecode(resp.body);
+        setState(() {
+          _workspaceId = data['workspace_id'] as int?;
+          _workspaceName = data['name']?.toString();
+          _loadingWorkspace = false;
+        });
+      } else {
+        final data = jsonDecode(resp.body);
+        final msg = data['message']?.toString() ?? 'Erro ao carregar workspace';
+        setState(() {
+          _workspaceError = msg;
+          _loadingWorkspace = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('[INVITE][ACTIVE_WS][ERR] $e');
+      setState(() {
+        _workspaceError = 'Erro de conexão';
+        _loadingWorkspace = false;
+      });
+    }
+  }
+
+  void _sendInvite() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final workspaceId = _workspaceId;
+    if (workspaceId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Workspace ativo não encontrado.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final email = _emailController.text.trim();
+    final role = _role;
+
+    final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspace/invite');
+    if (kDebugMode) {
+      print('[INVITE] Enviando convite: email=$email role=$role workspace_id=$workspaceId user_id=${widget.userId}');
+    }
+
+    try {
+      final resp = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'workspace_id': workspaceId,
+          'recipient_email': email,
+          'role': role,
+          'user_id': widget.userId,
+        }),
+      );
+
+      if (kDebugMode) {
+        print('[INVITE] status=${resp.statusCode} body=${resp.body}');
+      }
+
+      String message = 'Convite enviado!';
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        if (!mounted) return;
+        Navigator.of(context).pop(message);
+        return;
+      } else if (resp.statusCode == 400) {
+        final data = jsonDecode(resp.body);
+        message = data['message']?.toString() ?? 'Dados inválidos';
+      } else if (resp.statusCode == 403) {
+        message = 'Você não tem permissão para convidar';
+      } else if (resp.statusCode == 404) {
+        message = 'Workspace não encontrado';
+      } else {
+        message = 'Erro ao enviar convite. Tente novamente.';
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().contains('SocketException')
+          ? 'Erro de conexão'
+          : 'Erro inesperado';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      if (kDebugMode) {
+        print('[INVITE][ERR] $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  int? _getCurrentWorkspaceId() {
+    return _workspaceId;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: const Color(0xFF2C5364),
+      title: const Text(
+        'Compartilhar Workspace',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      ),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_loadingWorkspace) ...[
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else if (_workspaceError != null) ...[
+              Text(
+                _workspaceError!,
+                style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+            ] else if (_workspaceName != null) ...[
+              Text(
+                'Workspace: ${_workspaceName!}',
+                style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+            ],
+            TextFormField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Email',
+                labelStyle: const TextStyle(color: Colors.white70),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.08),
+                hintText: 'pessoa@email.com',
+                hintStyle: const TextStyle(color: Colors.white54),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              style: const TextStyle(color: Colors.white),
+              validator: (value) {
+                final v = (value ?? '').trim();
+                if (v.isEmpty) return 'Email obrigatório';
+                if (!v.contains('@')) return 'Email inválido';
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _role,
+              items: const [
+                DropdownMenuItem(value: 'viewer', child: Text('Viewer')),
+                DropdownMenuItem(value: 'editor', child: Text('Editor')),
+              ],
+              onChanged: (val) => setState(() => _role = val ?? 'viewer'),
+              decoration: InputDecoration(
+                labelText: 'Permissão',
+                labelStyle: const TextStyle(color: Colors.white70),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.08),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              dropdownColor: const Color(0xFF2C5364),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading || _loadingWorkspace || _workspaceId == null ? null : _sendInvite,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00C9A7),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Enviar Convite', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+      ],
     );
   }
 }
@@ -348,6 +601,20 @@ class _SettingsPageState extends State<_SettingsPage> {
     }
   }
 
+  void _openShareDialog(BuildContext context) {
+    showDialog<bool>(
+      context: context,
+      builder: (_) => ShareDialog(userId: widget.userId),
+    ).then((result) {
+      if (!mounted) return;
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Convite enviado (mock).')),
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -408,6 +675,18 @@ class _SettingsPageState extends State<_SettingsPage> {
                               style: TextStyle(color: Colors.white.withOpacity(0.75)),
                             ),
                             activeColor: const Color(0xFF00C9A7),
+                          ),
+                          ListTile(
+                            onTap: () => _openShareDialog(context),
+                            leading: const Icon(Icons.share, color: Colors.white),
+                            title: const Text(
+                              'Compartilhar workspace',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              'Convidar pessoas via email',
+                              style: TextStyle(color: Colors.white70),
+                            ),
                           ),
                           ListTile(
                             onTap: _openWorkspaceManager,
