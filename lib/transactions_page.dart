@@ -436,6 +436,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
       ),
       extendBodyBehindAppBar: true,
       floatingActionButton: FloatingActionButton(
+        heroTag: 'transactions_fab',
         onPressed: () async {
           final changed = await Navigator.of(context).push<bool>(
             MaterialPageRoute(

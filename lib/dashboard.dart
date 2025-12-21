@@ -162,6 +162,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
+        heroTag: 'dashboard_fab',
         onPressed: () async {
           final changed = await Navigator.of(context).push<bool>(
             MaterialPageRoute(

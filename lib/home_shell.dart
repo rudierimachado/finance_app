@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:local_auth/local_auth.dart';
 
 import 'add_transaction.dart';
@@ -22,16 +25,76 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  String _activeWorkspaceName = 'Workspace';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveWorkspaceName();
+  }
+
+  Future<void> _loadActiveWorkspaceName() async {
+    try {
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/active?user_id=${widget.userId}');
+      final response = await http.get(uri, headers: {'Content-Type': 'application/json'});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['workspace'] != null) {
+          if (mounted) {
+            setState(() {
+              _activeWorkspaceName = data['workspace']['name'] ?? 'Workspace';
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('Error loading active workspace name: $e');
+      if (mounted) {
+        setState(() {
+          _activeWorkspaceName = 'Workspace';
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            const Icon(Icons.workspaces, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              _activeWorkspaceName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF0F2027),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white70),
+            onPressed: () => setState(() => _index = 2),
+            tooltip: 'Ajustes',
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _index,
         children: [
           DashboardPage(userId: widget.userId),
           TransactionsPage(userId: widget.userId),
-          _SettingsPlaceholderPage(userId: widget.userId),
+          _SettingsPlaceholderPage(
+            userId: widget.userId,
+            onWorkspaceChanged: _loadActiveWorkspaceName,
+          ),
         ],
       ),
       bottomNavigationBar: Container(
@@ -71,21 +134,39 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-class _SettingsPlaceholderPage extends StatelessWidget {
+class _SettingsPlaceholderPage extends StatefulWidget {
   final int userId;
+  final VoidCallback? onWorkspaceChanged;
   
-  const _SettingsPlaceholderPage({required this.userId});
+  const _SettingsPlaceholderPage({required this.userId, this.onWorkspaceChanged});
+
+  @override
+  State<_SettingsPlaceholderPage> createState() => _SettingsPlaceholderPageState();
+}
+
+class _SettingsPlaceholderPageState extends State<_SettingsPlaceholderPage> {
+  late _SettingsPage _settingsPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _settingsPage = _SettingsPage(
+      userId: widget.userId,
+      onWorkspaceChanged: widget.onWorkspaceChanged,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return _SettingsPage(userId: userId);
+    return _settingsPage;
   }
 }
 
 class _SettingsPage extends StatefulWidget {
   final int userId;
+  final VoidCallback? onWorkspaceChanged;
 
-  const _SettingsPage({required this.userId});
+  const _SettingsPage({required this.userId, this.onWorkspaceChanged});
 
   @override
   State<_SettingsPage> createState() => _SettingsPageState();
@@ -254,10 +335,24 @@ class _SettingsPageState extends State<_SettingsPage> {
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
   }
 
+  Future<void> _openWorkspaceManager() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => WorkspaceManagerPage(userId: widget.userId),
+      ),
+    );
+
+    // If workspace was changed, call the callback to reload home screen
+    if (result == true && widget.onWorkspaceChanged != null) {
+      widget.onWorkspaceChanged!();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
+        heroTag: 'settings_fab',
         onPressed: () async {
           final changed = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
@@ -315,6 +410,18 @@ class _SettingsPageState extends State<_SettingsPage> {
                             activeColor: const Color(0xFF00C9A7),
                           ),
                           ListTile(
+                            onTap: _openWorkspaceManager,
+                            leading: const Icon(Icons.workspaces, color: Colors.white),
+                            title: const Text(
+                              'Workspaces',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              'Gerenciar nomes e criar workspaces zerados',
+                              style: TextStyle(color: Colors.white.withOpacity(0.75)),
+                            ),
+                          ),
+                          ListTile(
                             onTap: _logout,
                             leading: const Icon(Icons.logout, color: Colors.white),
                             title: const Text(
@@ -347,4 +454,587 @@ class _SettingsPageState extends State<_SettingsPage> {
       ),
     );
   }
+}
+
+class WorkspaceManagerPage extends StatefulWidget {
+  final int userId;
+  
+  const WorkspaceManagerPage({super.key, required this.userId});
+
+  @override
+  State<WorkspaceManagerPage> createState() => _WorkspaceManagerPageState();
+}
+
+class _Workspace {
+  final int id;
+  String name;
+  final String? description;
+  final String? color;
+
+  _Workspace({
+    required this.id,
+    required this.name,
+    this.description,
+    this.color,
+  });
+
+  factory _Workspace.fromJson(Map<String, dynamic> json) {
+    return _Workspace(
+      id: json['id'] as int,
+      name: json['name']?.toString() ?? 'Workspace',
+      description: json['description']?.toString(),
+      color: json['color']?.toString(),
+    );
+  }
+}
+
+class _WorkspaceManagerPageState extends State<WorkspaceManagerPage> {
+
+  final _nameController = TextEditingController();
+  final _newNameController = TextEditingController();
+
+  List<_Workspace> _workspaces = [];
+  int? _activeId;
+  bool _loading = true;
+  bool _saving = false;
+  bool _switching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWorkspaces();
+  }
+
+  Future<void> _loadWorkspaces() async {
+    try {
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces?user_id=${widget.userId}');
+      final response = await http.get(uri, headers: {'Content-Type': 'application/json'});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          _workspaces = (data['workspaces'] as List<dynamic>)
+              .map((json) => _Workspace.fromJson(json))
+              .toList();
+        }
+      }
+
+      // Se não retornou workspaces, o backend já criou um padrão
+      // Não criar workspace local, sempre usar o do banco
+      if (_workspaces.isEmpty) {
+        print('Nenhum workspace retornado - backend deve ter criado um padrão');
+        setState(() {
+          _loading = false;
+        });
+        return;
+      }
+
+      // Buscar workspace ativo
+      try {
+        final activeUri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/active?user_id=${widget.userId}');
+        final activeResponse = await http.get(activeUri, headers: {'Content-Type': 'application/json'});
+
+        if (activeResponse.statusCode == 200) {
+          final activeData = jsonDecode(activeResponse.body);
+          if (activeData['success'] == true && activeData['workspace'] != null) {
+            _activeId = activeData['workspace']['id'];
+          }
+        }
+      } catch (e) {
+        print('Error loading active workspace: $e');
+      }
+
+      _activeId ??= _workspaces.first.id;
+
+      if (_workspaces.isNotEmpty) {
+        _nameController.text = _workspaces
+            .firstWhere((w) => w.id == _activeId, orElse: () => _workspaces.first)
+            .name;
+      }
+
+      setState(() {
+        _loading = false;
+      });
+    } catch (e) {
+      print('Error loading workspaces: $e');
+      // Garantir que sempre há pelo menos um workspace
+      if (_workspaces.isEmpty) {
+        _workspaces.add(_Workspace(
+          id: 0,
+          name: 'Workspace principal',
+          description: 'Workspace padrão',
+        ));
+        _activeId = 0;
+        _nameController.text = 'Workspace principal';
+      }
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+
+  Future<void> _renameActive() async {
+    final active = _workspaces.firstWhere((w) => w.id == _activeId, orElse: () => _workspaces.first);
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty) return;
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/${active.id}?user_id=${widget.userId}');
+      final response = await http.put(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': newName}),
+      );
+
+      setState(() {
+        _saving = false;
+      });
+
+      if (response.statusCode == 200) {
+        setState(() {
+          active.name = newName;
+        });
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Workspace renomeado com sucesso!'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF00C9A7),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Erro ao renomear workspace'),
+              ],
+            ),
+            backgroundColor: Colors.red.shade400,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error renaming workspace: $e');
+      setState(() {
+        _saving = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Erro de conexão'),
+            ],
+          ),
+          backgroundColor: Colors.red.shade400,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _createWorkspace() async {
+    final name = _newNameController.text.trim();
+    if (name.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe um nome para o novo workspace.')),
+      );
+      return;
+    }
+
+    try {
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces?user_id=${widget.userId}');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name}),
+      );
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['workspace'] != null) {
+          final newWorkspace = _Workspace.fromJson(data['workspace']);
+
+          setState(() {
+            _workspaces.add(newWorkspace);
+            _activeId = newWorkspace.id;
+            _nameController.text = name;
+            _newNameController.clear();
+          });
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Workspace criado com saldo zerado.')),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao criar workspace.')),
+        );
+      }
+    } catch (e) {
+      print('Error creating workspace: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro ao criar workspace.')),
+      );
+    }
+  }
+
+  Future<void> _onActiveChanged(int? newId) async {
+    if (newId == null || newId == _activeId) return;
+
+    setState(() {
+      _switching = true;
+    });
+
+    try {
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/$newId/activate?user_id=${widget.userId}');
+      final response = await http.post(uri, headers: {'Content-Type': 'application/json'});
+
+      setState(() {
+        _switching = false;
+      });
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _activeId = newId;
+          _nameController.text = _workspaces.firstWhere((w) => w.id == newId).name;
+        });
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.swap_horiz, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Workspace alterado com sucesso!'),
+              ],
+            ),
+            backgroundColor: const Color(0xFF00C9A7),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Erro ao trocar workspace'),
+              ],
+            ),
+            backgroundColor: Colors.red.shade400,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error changing active workspace: $e');
+      setState(() {
+        _switching = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Erro de conexão'),
+            ],
+          ),
+          backgroundColor: Colors.red.shade400,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _newNameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // Garantir que sempre há um workspace antes de acessar
+    if (_workspaces.isEmpty) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.white70),
+              const SizedBox(height: 16),
+              const Text(
+                'Erro ao carregar workspaces',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Voltar'),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: const Color(0xFF0F2027),
+      );
+    }
+
+    final active = _workspaces.firstWhere((w) => w.id == _activeId, orElse: () => _workspaces.first);
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            _buildAppBar(context),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionTitle('Workspace atual'),
+                    const SizedBox(height: 12),
+                    _buildSettingsCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<int>(
+                            value: active.id,
+                            decoration: InputDecoration(
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Colors.white.withOpacity(0.08),
+                              labelStyle: const TextStyle(color: Colors.white),
+                              suffixIcon: _switching
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12.0),
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C9A7)),
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            dropdownColor: const Color(0xFF0F2027),
+                            style: const TextStyle(color: Colors.white),
+                            items: _workspaces
+                                .map((workspace) => DropdownMenuItem(
+                                      value: workspace.id,
+                                      child: Text(
+                                        workspace.name,
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
+                                    ))
+                                .toList(),
+                            onChanged: _switching ? null : _onActiveChanged,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _nameController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: 'Nome para workspace atual',
+                              labelStyle: const TextStyle(color: Colors.white70),
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Colors.white.withOpacity(0.08),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _saving ? null : _renameActive,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00C9A7),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(48),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                disabledBackgroundColor: Colors.grey.shade600,
+                              ),
+                              child: _saving
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(Icons.check, size: 20),
+                                        SizedBox(width: 8),
+                                        Text('Salvar nome', style: TextStyle(fontSize: 16)),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _buildSectionTitle('Criar novo workspace'),
+                    const SizedBox(height: 12),
+                    _buildSettingsCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextFormField(
+                            controller: _newNameController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: 'Nome do novo workspace',
+                              labelStyle: const TextStyle(color: Colors.white70),
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Colors.white.withOpacity(0.08),
+                              enabledBorder: OutlineInputBorder(
+                                borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.add),
+                              label: const Text('Criar workspace'),
+                              onPressed: _createWorkspace,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00C9A7),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(48),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Widget _buildAppBar(BuildContext context) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+    child: Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.chevron_left, color: Colors.white),
+          onPressed: () {
+            Navigator.of(context).pop(true); // Return true to signal changes were made
+          },
+          tooltip: 'Voltar',
+        ),
+        const Expanded(
+          child: Text(
+            'Gerenciar workspaces',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 48),
+      ],
+    ),
+  );
+}
+
+Widget _buildSectionTitle(String title) {
+  return Text(
+    title,
+    style: const TextStyle(
+      color: Colors.white,
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.3,
+    ),
+  );
+}
+
+Widget _buildSettingsCard({required Widget child}) {
+  return Card(
+    color: Colors.white.withOpacity(0.08),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    elevation: 0,
+    child: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: child,
+    ),
+  );
 }

@@ -10,6 +10,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'home_shell.dart';
 import 'register.dart';
 import 'config.dart';
+import 'workspace_selector.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -282,7 +283,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
-              pageBuilder: (context, animation, _) => HomeShell(userId: userId),
+              pageBuilder: (context, animation, _) => WorkspaceSelectorPage(userId: userId),
               transitionDuration: const Duration(milliseconds: 600),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return SlideTransition(
