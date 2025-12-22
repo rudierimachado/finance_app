@@ -11,11 +11,13 @@ import 'config.dart';
 class AddTransactionPage extends StatefulWidget {
   final int userId;
   final int? transactionId;
+  final int? workspaceId;
 
   const AddTransactionPage({
     super.key,
     required this.userId,
     this.transactionId,
+    this.workspaceId,
   });
 
   @override
@@ -754,6 +756,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ? _recurringEndDateIso()
             : null,
       };
+
+      // Garantir que a transação seja vinculada ao workspace ativo
+      if (widget.workspaceId != null) {
+        payload['workspace_id'] = widget.workspaceId;
+      }
 
       final resp = _isEditMode
           ? await http.put(

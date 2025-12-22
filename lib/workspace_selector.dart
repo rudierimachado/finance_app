@@ -345,6 +345,17 @@ class _WorkspaceSelectorPageState extends State<WorkspaceSelectorPage> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (!workspace.isOwner && workspace.ownerName != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Compartilhado por ${workspace.ownerName}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                     if (workspace.description != null) ...[
                       const SizedBox(height: 4),
                       Text(
@@ -376,20 +387,29 @@ class _Workspace {
   final String name;
   final String? description;
   final String? color;
+  final bool isOwner;
+  final String? ownerEmail;
+  final String? ownerName;
 
   _Workspace({
     required this.id,
     required this.name,
     this.description,
     this.color,
+    required this.isOwner,
+    this.ownerEmail,
+    this.ownerName,
   });
 
   factory _Workspace.fromJson(Map<String, dynamic> json) {
     return _Workspace(
       id: json['id'] as int,
-      name: json['name']?.toString() ?? 'Workspace',
+      name: json['name']?.toString() ?? '',
       description: json['description']?.toString(),
       color: json['color']?.toString(),
+      isOwner: json['is_owner'] as bool? ?? false,
+      ownerEmail: json['owner_email']?.toString(),
+      ownerName: json['owner_name']?.toString(),
     );
   }
 }

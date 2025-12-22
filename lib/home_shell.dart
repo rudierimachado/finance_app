@@ -27,7 +27,9 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  int? _activeWorkspaceId;
   String _activeWorkspaceName = 'Workspace';
+  String? _workspaceOwnerName;
 
   @override
   void initState() {
@@ -38,23 +40,46 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _loadActiveWorkspaceName() async {
     try {
       final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/active?user_id=${widget.userId}');
+      print('[HOME_SHELL] Carregando workspace ativo para userId=${widget.userId}');
+      print('[HOME_SHELL] URL: $uri');
+      
       final response = await http.get(uri, headers: {'Content-Type': 'application/json'});
+      print('[HOME_SHELL] Status: ${response.statusCode}');
+      print('[HOME_SHELL] Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        print('[HOME_SHELL] Parsed data: $data');
+        
         if (data['success'] == true && data['workspace'] != null) {
+          final workspace = data['workspace'];
+          final isOwner = workspace['is_owner'] as bool? ?? true;
+          final ownerName = workspace['owner_name']?.toString();
+          final workspaceName = workspace['name']?.toString() ?? 'Workspace';
+          final workspaceId = workspace['id'] as int?;
+          
+          print('[HOME_SHELL] Workspace name: $workspaceName');
+          print('[HOME_SHELL] Is owner: $isOwner');
+          print('[HOME_SHELL] Owner name: $ownerName');
+          
           if (mounted) {
             setState(() {
-              _activeWorkspaceName = data['workspace']['name'] ?? 'Workspace';
+              _activeWorkspaceId = workspaceId;
+              _activeWorkspaceName = workspaceName;
+              _workspaceOwnerName = !isOwner && ownerName != null ? ownerName : null;
             });
+            print('[HOME_SHELL] Estado atualizado - Nome: $_activeWorkspaceName, Owner: $_workspaceOwnerName, ID: $_activeWorkspaceId');
           }
         }
+      } else {
+        print('[HOME_SHELL] Erro HTTP: ${response.statusCode}');
       }
     } catch (e) {
       print('Error loading active workspace name: $e');
       if (mounted) {
         setState(() {
           _activeWorkspaceName = 'Workspace';
+          _workspaceOwnerName = null;
         });
       }
     }
@@ -68,13 +93,28 @@ class _HomeShellState extends State<HomeShell> {
           children: [
             const Icon(Icons.workspaces, color: Colors.white, size: 20),
             const SizedBox(width: 8),
-            Text(
-              _activeWorkspaceName,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 18,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _activeWorkspaceName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                  ),
+                ),
+                if (_workspaceOwnerName != null)
+                  Text(
+                    'por $_workspaceOwnerName',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -87,6 +127,25 @@ class _HomeShellState extends State<HomeShell> {
             tooltip: 'Ajustes',
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'main_fab',
+        onPressed: () async {
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => AddTransactionPage(
+                userId: widget.userId,
+                workspaceId: _activeWorkspaceId,
+              ),
+            ),
+          );
+          if (changed == true) {
+            financeRefreshTick.value = financeRefreshTick.value + 1;
+          }
+        },
+        backgroundColor: const Color(0xFF00C9A7),
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
       ),
       body: IndexedStack(
         index: _index,
@@ -619,22 +678,6 @@ class _SettingsPageState extends State<_SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'settings_fab',
-        onPressed: () async {
-          final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => AddTransactionPage(userId: widget.userId),
-            ),
-          );
-          if (changed == true) {
-            financeRefreshTick.value = financeRefreshTick.value + 1;
-          }
-        },
-        backgroundColor: const Color(0xFF00C9A7),
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
