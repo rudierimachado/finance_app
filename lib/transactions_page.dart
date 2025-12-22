@@ -10,10 +10,12 @@ import 'config.dart';
 
 class TransactionsPage extends StatefulWidget {
   final int userId;
+  final int? workspaceId;
 
   const TransactionsPage({
     super.key,
     required this.userId,
+    this.workspaceId,
   });
 
   @override
@@ -26,6 +28,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
   String _typeFilter = 'all';
   final _queryController = TextEditingController();
 
+  late final VoidCallback _refreshListener;
+
   late Future<List<_TxItem>> _future;
   List<_TxItem> _currentItems = <_TxItem>[];
 
@@ -36,10 +40,34 @@ class _TransactionsPageState extends State<TransactionsPage> {
     _year = now.year;
     _month = now.month;
     _future = _fetch();
+
+    _refreshListener = () {
+      if (mounted) {
+        setState(() {
+          _currentItems = <_TxItem>[];
+          _future = _fetch();
+        });
+      }
+    };
+    financeRefreshTick.addListener(_refreshListener);
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.workspaceId != widget.workspaceId) {
+      if (mounted) {
+        setState(() {
+          _currentItems = <_TxItem>[];
+          _future = _fetch();
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    financeRefreshTick.removeListener(_refreshListener);
     _queryController.dispose();
     super.dispose();
   }
@@ -78,6 +106,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
       'user_id': widget.userId.toString(),
       'year': _year.toString(),
       'month': _month.toString(),
+      if (widget.workspaceId != null) 'workspace_id': widget.workspaceId.toString(),
     };
     if (type != null) params['type'] = type;
     if (q.isNotEmpty) params['q'] = q;
@@ -136,14 +165,13 @@ class _TransactionsPageState extends State<TransactionsPage> {
         builder: (_) => AddTransactionPage(
           userId: widget.userId,
           transactionId: transactionId,
+          workspaceId: widget.workspaceId,
         ),
       ),
     );
 
     if (changed == true && mounted) {
-      setState(() {
-        _future = _fetch();
-      });
+      financeRefreshTick.value = financeRefreshTick.value + 1;
     }
   }
 
@@ -440,7 +468,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
         onPressed: () async {
           final changed = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
-              builder: (_) => AddTransactionPage(userId: widget.userId),
+              builder: (_) => AddTransactionPage(
+                userId: widget.userId,
+                workspaceId: widget.workspaceId,
+              ),
             ),
           );
           if (changed == true && mounted) {

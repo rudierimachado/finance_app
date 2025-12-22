@@ -214,8 +214,8 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          DashboardPage(userId: widget.userId),
-          TransactionsPage(userId: widget.userId),
+          DashboardPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
+          TransactionsPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           _SettingsPlaceholderPage(
             userId: widget.userId,
             onWorkspaceChanged: _loadActiveWorkspaceName,

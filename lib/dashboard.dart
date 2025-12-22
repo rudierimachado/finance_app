@@ -10,10 +10,12 @@ import 'config.dart';
 
 class DashboardPage extends StatefulWidget {
   final int userId;
+  final int? workspaceId;
 
   const DashboardPage({
     super.key,
     required this.userId,
+    this.workspaceId,
   });
 
   @override
@@ -32,6 +34,19 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // Cache de dados por mês/ano para evitar refetch
   final Map<String, _DashboardData> _dataCache = {};
+
+  @override
+  void didUpdateWidget(covariant DashboardPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.workspaceId != widget.workspaceId) {
+      _clearCache();
+      _currentBalance = null;
+      _currentIncomePaid = null;
+      _currentExpensePaid = null;
+      _currentExpensePending = null;
+      _future = _fetchDashboardFor(_year, _month);
+    }
+  }
 
   void _syncLocalTotalsFromServer(_DashboardData data) {
     _currentIncomePaid = data.monthIncomePaid;
@@ -72,10 +87,14 @@ class _DashboardPageState extends State<DashboardPage> {
     _future = _fetchDashboard();
 
     _refreshListener = () {
-      final cacheKey = '$_year-$_month';
+      final cacheKey = '$_year-$_month-${widget.workspaceId ?? 0}';
       _dataCache.remove(cacheKey);
       if (mounted) {
         setState(() {
+          _currentBalance = null;
+          _currentIncomePaid = null;
+          _currentExpensePaid = null;
+          _currentExpensePending = null;
           _future = _fetchDashboardFor(_year, _month);
         });
       }
@@ -95,14 +114,20 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<_DashboardData> _fetchDashboardFor(int year, int month) async {
     // Verifica cache primeiro
-    final cacheKey = '$year-$month';
+    final cacheKey = '$year-$month-${widget.workspaceId ?? 0}';
     if (_dataCache.containsKey(cacheKey)) {
       return _dataCache[cacheKey]!;
     }
 
-    final uri = Uri.parse(
-      '$apiBaseUrl/gerenciamento-financeiro/api/dashboard?user_id=${widget.userId}&year=$year&month=$month',
-    );
+    final params = <String, String>{
+      'user_id': widget.userId.toString(),
+      'year': year.toString(),
+      'month': month.toString(),
+      if (widget.workspaceId != null) 'workspace_id': widget.workspaceId.toString(),
+    };
+
+    final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/dashboard')
+        .replace(queryParameters: params);
 
     final response = await http.get(
       uri,
@@ -166,17 +191,14 @@ class _DashboardPageState extends State<DashboardPage> {
         onPressed: () async {
           final changed = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
-              builder: (_) => AddTransactionPage(userId: widget.userId),
+              builder: (_) => AddTransactionPage(
+                userId: widget.userId,
+                workspaceId: widget.workspaceId,
+              ),
             ),
           );
           if (changed == true && mounted) {
-            setState(() {
-              _clearCache();
-              _currentBalance = null;
-              _currentIncomePaid = null;
-              _currentExpensePaid = null;
-              _future = _fetchDashboard();
-            });
+            financeRefreshTick.value = financeRefreshTick.value + 1;
           }
         },
         backgroundColor: const Color(0xFF00C9A7),
@@ -317,6 +339,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
 class _PreviousMonthComparisonCard extends StatefulWidget {
   final int userId;
+  final int? workspaceId;
   final int currentYear;
   final int currentMonth;
   final _DashboardData current;
@@ -324,6 +347,7 @@ class _PreviousMonthComparisonCard extends StatefulWidget {
   const _PreviousMonthComparisonCard({
     super.key,
     required this.userId,
+    this.workspaceId,
     required this.currentYear,
     required this.currentMonth,
     required this.current,
@@ -352,9 +376,15 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
   }
 
   Future<_DashboardData> _fetchDashboardFor(int userId, int year, int month) async {
-    final uri = Uri.parse(
-      '$apiBaseUrl/gerenciamento-financeiro/api/dashboard?user_id=$userId&year=$year&month=$month',
-    );
+    final params = <String, String>{
+      'user_id': userId.toString(),
+      'year': year.toString(),
+      'month': month.toString(),
+      if (widget.workspaceId != null) 'workspace_id': widget.workspaceId.toString(),
+    };
+
+    final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/dashboard')
+        .replace(queryParameters: params);
 
     final response = await http.get(
       uri,
