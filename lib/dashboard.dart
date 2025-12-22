@@ -269,8 +269,9 @@ class _DashboardPageState extends State<DashboardPage> {
                       }
 
                       final data = snapshot.data!;
-                      // Sempre sincronizar com dados do servidor quando novos dados são carregados
-                      _syncLocalTotalsFromServer(data);
+                      if (_currentBalance == null) {
+                        _syncLocalTotalsFromServer(data);
+                      }
                       final effectiveBalance = _currentBalance ?? data.balance;
                       return SingleChildScrollView(
                         child: Column(
