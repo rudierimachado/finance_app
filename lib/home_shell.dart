@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -30,11 +31,68 @@ class _HomeShellState extends State<HomeShell> {
   int? _activeWorkspaceId;
   String _activeWorkspaceName = 'Workspace';
   String? _workspaceOwnerName;
+  Timer? _refreshTimer;
+  int _lastWorkspaceId = 0;
 
   @override
   void initState() {
     super.initState();
     _loadActiveWorkspaceName();
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    // Auto-refresh a cada 10 segundos para detectar mudanças de workspace
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _checkWorkspaceChanges();
+    });
+  }
+
+  Future<void> _checkWorkspaceChanges() async {
+    if (!mounted) return;
+    
+    try {
+      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/active?user_id=${widget.userId}');
+      final response = await http.get(uri, headers: {'Content-Type': 'application/json'});
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['workspace'] != null) {
+          final newWorkspaceId = data['workspace']['id'] as int?;
+          
+          // Se workspace mudou, atualizar UI e dados
+          if (newWorkspaceId != null && newWorkspaceId != _lastWorkspaceId) {
+            print('[AUTO_REFRESH] Workspace mudou de $_lastWorkspaceId para $newWorkspaceId');
+            _lastWorkspaceId = newWorkspaceId;
+            
+            // Recarregar dados do workspace
+            await _loadActiveWorkspaceName();
+            
+            // Trigger refresh nos componentes filhos
+            financeRefreshTick.value = financeRefreshTick.value + 1;
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Workspace sincronizado automaticamente'),
+                  duration: Duration(seconds: 2),
+                  backgroundColor: Color(0xFF00C9A7),
+                ),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Silenciar erros de conectividade para não spam o usuário
+      print('[AUTO_REFRESH] Erro: $e');
+    }
   }
 
   Future<void> _loadActiveWorkspaceName() async {
@@ -68,6 +126,12 @@ class _HomeShellState extends State<HomeShell> {
               _activeWorkspaceName = workspaceName;
               _workspaceOwnerName = !isOwner && ownerName != null ? ownerName : null;
             });
+            
+            // Atualizar controle de mudanças
+            if (workspaceId != null) {
+              _lastWorkspaceId = workspaceId;
+            }
+            
             print('[HOME_SHELL] Estado atualizado - Nome: $_activeWorkspaceName, Owner: $_workspaceOwnerName, ID: $_activeWorkspaceId');
           }
         }
