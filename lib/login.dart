@@ -33,6 +33,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool _rememberMe = false;
   String? _errorMessage;
 
+  double _stableKeyboardBottom = 0.0;
+
   final LocalAuthentication _localAuth = LocalAuthentication();
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(
@@ -294,7 +296,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Container(
@@ -323,22 +325,45 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     return SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final keyboardBottom = MediaQuery.of(context).viewInsets.bottom;
-          final keyboardOpen = keyboardBottom > 0;
-          final verticalPadding = keyboardOpen ? 16.0 : 40.0;
+          final rawKeyboardBottom = MediaQuery.of(context).viewInsets.bottom;
 
-          return AnimatedPadding(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
+          // Stabilize keyboard inset: capture once when it opens; reset when it closes.
+          if (rawKeyboardBottom <= 0) {
+            if (_stableKeyboardBottom != 0.0) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                if (_stableKeyboardBottom != 0.0) {
+                  setState(() {
+                    _stableKeyboardBottom = 0.0;
+                  });
+                }
+              });
+            }
+          } else {
+            if (_stableKeyboardBottom == 0.0) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                if (_stableKeyboardBottom == 0.0) {
+                  setState(() {
+                    _stableKeyboardBottom = rawKeyboardBottom;
+                  });
+                }
+              });
+            }
+          }
+
+          final keyboardBottom = rawKeyboardBottom <= 0 ? 0.0 : (_stableKeyboardBottom > 0 ? _stableKeyboardBottom : rawKeyboardBottom);
+          const verticalPadding = 32.0;
+
+          return Padding(
             padding: EdgeInsets.only(bottom: keyboardBottom),
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: verticalPadding),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Align(
-                  alignment: keyboardOpen ? Alignment.topCenter : Alignment.center,
-                  child: AnimatedBuilder(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: verticalPadding),
+              child: Column(
+                children: [
+                  const SizedBox(height: 24),
+                  AnimatedBuilder(
                     animation: _mainController,
                     builder: (context, child) {
                       return FadeTransition(
@@ -350,7 +375,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       );
                     },
                   ),
-                ),
+                ],
               ),
             ),
           );
@@ -360,51 +385,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildLoginForm() {
-    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
-
     return Container(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
         children: [
-          if (keyboardOpen) _buildCompactHeader(),
-          if (!keyboardOpen) _buildHeader(),
-          SizedBox(height: keyboardOpen ? 12 : 40),
+          _buildHeader(),
+          const SizedBox(height: 24),
           _buildCard(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: const Color(0xFF00C9A7).withOpacity(0.18),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF00C9A7).withOpacity(0.35)),
-            ),
-            child: const Icon(Icons.savings_outlined, color: Color(0xFF00C9A7), size: 16),
-          ),
-          const SizedBox(width: 10),
-          const Text(
-            'Nexus Finanças',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.2,
-            ),
-          ),
         ],
       ),
     );
@@ -453,10 +440,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   Widget _buildCard() {
     final narrow = MediaQuery.of(context).size.width < 380;
-    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Container(
-      padding: EdgeInsets.all(narrow || keyboardOpen ? 20 : 32),
+      padding: EdgeInsets.all(narrow ? 20 : 32),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.95),
         borderRadius: BorderRadius.circular(24),
