@@ -578,6 +578,29 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   onApply: _applyFilters,
                 ),
                 const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withOpacity(0.10)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.white.withOpacity(0.75), size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Dica: toque em Pago/Pendente (ou no switch) para marcar a despesa como paga e atualizar os totais.',
+                          style: TextStyle(color: Colors.white.withOpacity(0.78), fontSize: 12, height: 1.25),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Expanded(
                   child: FutureBuilder<List<_TxItem>>(
                     future: _future,

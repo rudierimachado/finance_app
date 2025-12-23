@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,13 +24,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final TextEditingController _passwordController = TextEditingController();
 
   late AnimationController _mainController;
-  late AnimationController _waveController;
-  late AnimationController _particleController;
 
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
-  late Animation<double> _waveAnimation;
-  late Animation<double> _particleAnimation;
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -176,16 +171,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       vsync: this,
     );
 
-    _waveController = AnimationController(
-      duration: const Duration(seconds: 3),
-      vsync: this,
-    );
-
-    _particleController = AnimationController(
-      duration: const Duration(seconds: 8),
-      vsync: this,
-    );
-
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -195,33 +180,19 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     ));
 
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.4),
+      begin: const Offset(0, 0.18),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _mainController,
-      curve: const Interval(0.2, 1.0, curve: Curves.elasticOut),
+      curve: Curves.easeOutCubic,
     ));
 
-    _waveAnimation = Tween<double>(
-      begin: 0,
-      end: 2 * math.pi,
-    ).animate(_waveController);
-
-    _particleAnimation = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(_particleController);
-
     _mainController.forward();
-    _waveController.repeat();
-    _particleController.repeat();
   }
 
   @override
   void dispose() {
     _mainController.dispose();
-    _waveController.dispose();
-    _particleController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -324,151 +295,127 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFF0F2027),
+                Color(0xFF203A43),
+                Color(0xFF2C5364),
+              ],
+            ),
+          ),
+          child: Stack(
+            children: [
+              _buildMainContent(),
             ],
           ),
         ),
-        child: Stack(
-          children: [
-            _buildAnimatedBackground(),
-            _buildParticles(),
-            _buildMainContent(),
-          ],
-        ),
       ),
-    );
-  }
-
-  Widget _buildAnimatedBackground() {
-    return AnimatedBuilder(
-      animation: _waveAnimation,
-      builder: (context, child) {
-        return CustomPaint(
-          size: Size.infinite,
-          painter: _WavePainter(_waveAnimation.value),
-        );
-      },
-    );
-  }
-
-  Widget _buildParticles() {
-    return AnimatedBuilder(
-      animation: _particleAnimation,
-      builder: (context, child) {
-        return Stack(
-          children: List.generate(15, (index) {
-            final offset = _particleAnimation.value * 2 * math.pi;
-            final x = 50.0 + index * 25.0 + 30 * math.sin(offset + index);
-            final y = 100.0 + index * 40.0 + 20 * math.cos(offset + index * 0.8);
-            
-            return Positioned(
-              left: x,
-              top: y,
-              child: _Particle(
-                size: 3.0 + index % 3,
-                opacity: 0.3 + (index % 3) * 0.2,
-              ),
-            );
-          }),
-        );
-      },
     );
   }
 
   Widget _buildMainContent() {
     return SafeArea(
-      child: Center(
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-            child: AnimatedBuilder(
-              animation: _mainController,
-              builder: (context, child) {
-                return FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SlideTransition(
-                    position: _slideAnimation,
-                    child: _buildLoginForm(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final keyboardBottom = MediaQuery.of(context).viewInsets.bottom;
+          final keyboardOpen = keyboardBottom > 0;
+          final verticalPadding = keyboardOpen ? 16.0 : 40.0;
+
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.only(bottom: keyboardBottom),
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: verticalPadding),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Align(
+                  alignment: keyboardOpen ? Alignment.topCenter : Alignment.center,
+                  child: AnimatedBuilder(
+                    animation: _mainController,
+                    builder: (context, child) {
+                      return FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child: _buildLoginForm(),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildLoginForm() {
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return Container(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Column(
         children: [
-          _buildHeader(),
-          const SizedBox(height: 40),
+          if (keyboardOpen) _buildCompactHeader(),
+          if (!keyboardOpen) _buildHeader(),
+          SizedBox(height: keyboardOpen ? 12 : 40),
           _buildCard(),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF00C9A7), Color(0xFF00B4D8)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+  Widget _buildCompactHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFF00C9A7).withOpacity(0.18),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF00C9A7).withOpacity(0.35)),
             ),
-            borderRadius: BorderRadius.circular(25),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF00C9A7).withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-                spreadRadius: 5,
-              ),
-            ],
+            child: const Icon(Icons.savings_outlined, color: Color(0xFF00C9A7), size: 16),
           ),
-          child: const Icon(
-            Icons.savings_outlined,
-            color: Colors.white,
-            size: 50,
+          const SizedBox(width: 10),
+          const Text(
+            'Nexus Finanças',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+            ),
           ),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'Nexus Finanças',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-            letterSpacing: 0.4,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildCard() {
+    final narrow = MediaQuery.of(context).size.width < 380;
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.all(narrow || keyboardOpen ? 20 : 32),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.95),
         borderRadius: BorderRadius.circular(24),
@@ -823,6 +770,7 @@ class _ModernTextField extends StatelessWidget {
   final String label;
   final IconData icon;
   final TextInputType? keyboardType;
+
   final bool obscureText;
   final Widget? suffixIcon;
   final String? Function(String?)? validator;
@@ -879,145 +827,6 @@ class _ModernTextField extends StatelessWidget {
         labelStyle: const TextStyle(
           color: Color(0xFF6B7280),
           fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-}
-
-class _WavePainter extends CustomPainter {
-  final double animationValue;
-
-  _WavePainter(this.animationValue);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..shader = const LinearGradient(
-        colors: [
-          Color(0xFF00C9A7),
-          Color(0xFF00B4D8),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.fill;
-
-    final path = Path();
-    final waveHeight = 30.0;
-    final waveLength = size.width / 2;
-
-    path.moveTo(0, size.height * 0.8);
-
-    for (double x = 0; x <= size.width; x += 1) {
-      final y = size.height * 0.8 + 
-          waveHeight * math.sin((x / waveLength) * 2 * math.pi + animationValue);
-      path.lineTo(x, y);
-    }
-
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-class _Particle extends StatelessWidget {
-  final double size;
-  final double opacity;
-
-  const _Particle({
-    required this.size,
-    required this.opacity,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFF00C9A7).withOpacity(opacity),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF00C9A7).withOpacity(opacity * 0.5),
-            blurRadius: size * 2,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class FinanceHomePage extends StatelessWidget {
-  const FinanceHomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00C9A7), Color(0xFF00B4D8)],
-                    ),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF00C9A7).withOpacity(0.4),
-                        blurRadius: 25,
-                        offset: const Offset(0, 15),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.check_circle_outline,
-                    size: 60,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                const Text(
-                  'Login realizado com sucesso!',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Bem-vindo ao Finance Together',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
