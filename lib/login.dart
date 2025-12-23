@@ -410,6 +410,47 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          width: 92,
+          height: 92,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF00C9A7), Color(0xFF00B4D8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00C9A7).withOpacity(0.28),
+                blurRadius: 24,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.savings_outlined,
+            color: Colors.white,
+            size: 44,
+          ),
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'Nexus Finanças',
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+            letterSpacing: 0.4,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCard() {
     final narrow = MediaQuery.of(context).size.width < 380;
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
