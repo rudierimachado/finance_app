@@ -124,7 +124,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final items = <_TxItem>[];
     for (final e in raw) {
       if (e is! Map) continue;
-      final id = (e['id'] as num?)?.toInt() ?? 0;
+      final rawId = e['id'];
+      int id = 0;
+      if (rawId is num) {
+        id = rawId.toInt();
+      } else if (rawId is String) {
+        id = int.tryParse(rawId) ?? 0;
+      }
+      if (id <= 0) continue;
       final desc = e['description']?.toString() ?? '';
       final amount = (e['amount'] as num? ?? 0).toDouble();
       final rawType = e['type']?.toString().trim().toLowerCase();
@@ -188,6 +195,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
   }
 
   Future<void> _setPaid(int transactionId, bool newStatus) async {
+    if (transactionId <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro: transação inválida'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     // Update otimista: atualizar UI imediatamente
     final itemIndex = _currentItems.indexWhere((item) => item.id == transactionId);
     if (itemIndex != -1) {
@@ -208,21 +223,38 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
     // Chamar backend em background
     try {
-      final uri = Uri.parse(
-        '$apiBaseUrl/gerenciamento-financeiro/api/transactions/$transactionId',
+      bool isRouteMismatch(http.Response r) {
+        final bodyLower = r.body.toLowerCase();
+        return bodyLower.contains('<!doctype html>') ||
+            bodyLower.contains('endpoint não encontrado') ||
+            bodyLower.contains('endpoint nao encontrado');
+      }
+
+      Uri buildPutUri(String prefix) => Uri.parse(
+        '$apiBaseUrl$prefix/api/transactions/$transactionId',
       );
 
-      final response = await http
-          .put(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': widget.userId,
-              'is_paid': newStatus,
-              'action': 'set_paid',
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
+      Future<http.Response> doPut(Uri uri) {
+        return http
+            .put(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'user_id': widget.userId,
+                'is_paid': newStatus,
+                'action': 'set_paid',
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
+      }
+
+      var uri = buildPutUri('/gerenciamento-financeiro');
+      var response = await doPut(uri);
+
+      if ((response.statusCode == 404 || response.statusCode == 405) && isRouteMismatch(response)) {
+        uri = buildPutUri('');
+        response = await doPut(uri);
+      }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -428,8 +460,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
           ),
         );
         setState(() {
+          _currentItems = <_TxItem>[];
           _future = _fetch();
         });
+        financeRefreshTick.value = financeRefreshTick.value + 1;
         return;
       }
 
@@ -596,7 +630,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
                       return ListView.separated(
                         itemCount: displayItems.length,
-                        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.white.withOpacity(0.08)),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final item = displayItems[index];
                           return _TxRow(
@@ -815,6 +849,49 @@ class _TxRow extends StatelessWidget {
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 420;
 
+        Widget wrapTile(Widget child) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
+              ),
+              child: child,
+            ),
+          );
+        }
+
+        Widget buildPaidChip() {
+          final paid = item.isPaid;
+          final fg = paid ? const Color(0xFF10B981) : const Color(0xFFFBBF24);
+          final bg = fg.withOpacity(0.16);
+          return InkWell(
+            onTap: () => onTogglePaid(!paid),
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: fg.withOpacity(0.35)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(paid ? Icons.check_circle : Icons.schedule, color: fg, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    paid ? 'Pago' : 'Pendente',
+                    style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         Widget buildMenu() {
           return PopupMenuButton<int>(
             icon: Icon(Icons.more_vert, color: Colors.white.withOpacity(0.85), size: 18),
@@ -833,8 +910,65 @@ class _TxRow extends StatelessWidget {
         }
 
         if (compact) {
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          return wrapTile(
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              leading: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: catColor.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: catColor.withOpacity(0.35)),
+                ),
+                child: Icon(
+                  isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+                  color: catColor,
+                  size: 18,
+                ),
+              ),
+              title: Text(
+                item.description,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                [
+                  if (catName.isNotEmpty) catName,
+                  if (dateLabel.isNotEmpty) dateLabel,
+                ].join(' • '),
+                style: TextStyle(color: Colors.white.withOpacity(0.62), fontSize: 12),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$sign R\$ ${item.amount.toStringAsFixed(2)}',
+                    style: TextStyle(color: amountColor, fontWeight: FontWeight.w900, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isExpense) buildPaidChip(),
+                      if (isExpense) const SizedBox(width: 6),
+                      buildMenu(),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return wrapTile(
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             leading: Container(
               width: 42,
               height: 42,
@@ -851,7 +985,7 @@ class _TxRow extends StatelessWidget {
             ),
             title: Text(
               item.description,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -859,137 +993,73 @@ class _TxRow extends StatelessWidget {
               [
                 if (catName.isNotEmpty) catName,
                 if (dateLabel.isNotEmpty) dateLabel,
-                if (isExpense) (item.isPaid ? 'Pago' : 'Pendente'),
               ].join(' • '),
-              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+              style: TextStyle(color: Colors.white.withOpacity(0.62), fontSize: 12),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: Column(
+            trailing: Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  '$sign R\$ ${item.amount.toStringAsFixed(2)}',
-                  style: TextStyle(color: amountColor, fontWeight: FontWeight.w800, fontSize: 13),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isExpense)
-                      IconButton(
-                        onPressed: () => onTogglePaid(!item.isPaid),
-                        icon: Icon(
-                          item.isPaid ? Icons.check_circle : Icons.schedule,
-                          color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
-                          size: 18,
-                        ),
-                        tooltip: item.isPaid ? 'Marcar como não paga' : 'Marcar como paga',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      ),
-                    buildMenu(),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          leading: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: catColor.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: catColor.withOpacity(0.35)),
-            ),
-            child: Icon(
-              isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-              color: catColor,
-              size: 18,
-            ),
-          ),
-          title: Text(
-            item.description,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            [
-              if (catName.isNotEmpty) catName,
-              if (dateLabel.isNotEmpty) dateLabel,
-            ].join(' • '),
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isExpense) ...[
-                Transform.scale(
-                  scale: 0.80,
-                  child: Switch(
-                    value: item.isPaid,
-                    onChanged: onTogglePaid,
-                    activeColor: const Color(0xFF00C9A7),
-                    activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                if (isExpense) ...[
+                  Transform.scale(
+                    scale: 0.80,
+                    child: Switch(
+                      value: item.isPaid,
+                      onChanged: onTogglePaid,
+                      activeColor: const Color(0xFF00C9A7),
+                      activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                   ),
+                  const SizedBox(width: 6),
+                ],
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$sign R\$ ${item.amount.toStringAsFixed(2)}',
+                      style: TextStyle(color: amountColor, fontWeight: FontWeight.w900, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (isExpense) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        item.isPaid ? 'Pago' : 'Pendente',
+                        style: TextStyle(
+                          color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(width: 6),
+                IconButton(
+                  onPressed: onViewAttachments,
+                  icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 16),
+                  tooltip: 'Comprovantes',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+                IconButton(
+                  onPressed: onEdit,
+                  icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 16),
+                  tooltip: 'Editar',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
+                  tooltip: 'Excluir',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
               ],
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$sign R\$ ${item.amount.toStringAsFixed(2)}',
-                    style: TextStyle(color: amountColor, fontWeight: FontWeight.w800, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (isExpense) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      item.isPaid ? 'Pago' : 'Pendente',
-                      style: TextStyle(
-                        color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(width: 6),
-              IconButton(
-                onPressed: onViewAttachments,
-                icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 16),
-                tooltip: 'Comprovantes',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-              IconButton(
-                onPressed: onEdit,
-                icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 16),
-                tooltip: 'Editar',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-              IconButton(
-                onPressed: onDelete,
-                icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
-                tooltip: 'Excluir',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-            ],
+            ),
           ),
         );
       },

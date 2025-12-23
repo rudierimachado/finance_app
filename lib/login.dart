@@ -322,12 +322,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
-        width: size.width,
-        height: size.height,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -389,19 +386,25 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Widget _buildMainContent() {
     return SafeArea(
       child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          child: AnimatedBuilder(
-            animation: _mainController,
-            builder: (context, child) {
-              return FadeTransition(
-                opacity: _fadeAnimation,
-                child: SlideTransition(
-                  position: _slideAnimation,
-                  child: _buildLoginForm(),
-                ),
-              );
-            },
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: AnimatedBuilder(
+              animation: _mainController,
+              builder: (context, child) {
+                return FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: _buildLoginForm(),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -451,21 +454,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         ),
         const SizedBox(height: 24),
         const Text(
-          'Finance Together',
+          'Nexus Finanças',
           style: TextStyle(
             fontSize: 32,
-            fontWeight: FontWeight.w300,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
-            letterSpacing: 1.5,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Sua jornada financeira em casal',
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.white.withOpacity(0.8),
-            fontWeight: FontWeight.w400,
+            letterSpacing: 0.4,
           ),
         ),
       ],

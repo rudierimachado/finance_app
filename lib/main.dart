@@ -67,7 +67,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      title: 'Nexus Financeiro',
+      title: 'Nexus Finanças',
       routes: {
         '/login': (_) => const LoginPage(),
         '/register': (_) => const RegisterPage(),
