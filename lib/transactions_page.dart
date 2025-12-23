@@ -455,6 +455,31 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Evitar requisições sem workspace_id enquanto o HomeShell ainda está resolvendo
+    // o workspace ativo. Isso impede misturar dados entre workspaces.
+    if (widget.workspaceId == null) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF0F2027),
+                Color(0xFF203A43),
+                Color(0xFF2C5364),
+              ],
+            ),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C9A7)),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transações', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -618,98 +643,119 @@ class _FiltersBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              IconButton(
-                onPressed: onPrevMonth,
-                icon: const Icon(Icons.chevron_left, color: Colors.white),
-              ),
-              Expanded(
-                child: Text(
-                  '${month.toString().padLeft(2, '0')}/$year',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-                ),
-              ),
-              IconButton(
-                onPressed: onNextMonth,
-                icon: const Icon(Icons.chevron_right, color: Colors.white),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+
+        final dropdown = DropdownButtonFormField<String>(
+          value: typeFilter,
+          items: const [
+            DropdownMenuItem(value: 'all', child: Text('Tudo')),
+            DropdownMenuItem(value: 'income', child: Text('Receitas')),
+            DropdownMenuItem(value: 'expense', child: Text('Despesas')),
+          ],
+          onChanged: (v) {
+            if (v == null) return;
+            onTypeChanged(v);
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.06),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
-          const SizedBox(height: 10),
-          Row(
+          dropdownColor: const Color(0xFF203A43),
+          style: const TextStyle(color: Colors.white),
+        );
+
+        final search = TextField(
+          controller: queryController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Buscar',
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.45)),
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.06),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          onSubmitted: (_) => onApply(),
+        );
+
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.10)),
+          ),
+          child: Column(
             children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: typeFilter,
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('Tudo')),
-                    DropdownMenuItem(value: 'income', child: Text('Receitas')),
-                    DropdownMenuItem(value: 'expense', child: Text('Despesas')),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: onPrevMonth,
+                    icon: const Icon(Icons.chevron_left, color: Colors.white),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '${month.toString().padLeft(2, '0')}/$year',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onNextMonth,
+                    icon: const Icon(Icons.chevron_right, color: Colors.white),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (compact) ...[
+                dropdown,
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: search),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      onPressed: onApply,
+                      icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
+                    ),
                   ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    onTypeChanged(v);
-                  },
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.06),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  dropdownColor: const Color(0xFF203A43),
-                  style: const TextStyle(color: Colors.white),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: queryController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.45)),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.06),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(child: dropdown),
+                    const SizedBox(width: 10),
+                    Expanded(child: search),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      onPressed: onApply,
+                      icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  onSubmitted: (_) => onApply(),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              IconButton(
-                onPressed: onApply,
-                icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
-              ),
+              ],
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -765,64 +811,141 @@ class _TxRow extends StatelessWidget {
     final catName = item.categoryName ?? '';
     final isExpense = item.type == 'expense';
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      leading: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: catColor.withOpacity(0.18),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: catColor.withOpacity(0.35)),
-        ),
-        child: Icon(
-          isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-          color: catColor,
-          size: 18,
-        ),
-      ),
-      title: Text(
-        item.description,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        [
-          if (catName.isNotEmpty) catName,
-          if (dateLabel.isNotEmpty) dateLabel,
-        ].join(' • '),
-        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: SizedBox(
-        width: isExpense ? 240 : 180,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (isExpense) ...[
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Transform.scale(
-                    scale: 0.75,
-                    child: Switch(
-                      value: item.isPaid,
-                      onChanged: onTogglePaid,
-                      activeColor: const Color(0xFF00C9A7),
-                      activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+
+        Widget buildMenu() {
+          return PopupMenuButton<int>(
+            icon: Icon(Icons.more_vert, color: Colors.white.withOpacity(0.85), size: 18),
+            color: const Color(0xFF203A43),
+            onSelected: (v) {
+              if (v == 0) onViewAttachments();
+              if (v == 1) onEdit();
+              if (v == 2) onDelete();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 0, child: Text('Comprovantes', style: TextStyle(color: Colors.white))),
+              PopupMenuItem(value: 1, child: Text('Editar', style: TextStyle(color: Colors.white))),
+              PopupMenuItem(value: 2, child: Text('Excluir', style: TextStyle(color: Colors.white))),
             ],
-            Expanded(
-              child: Column(
+          );
+        }
+
+        if (compact) {
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            leading: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: catColor.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: catColor.withOpacity(0.35)),
+              ),
+              child: Icon(
+                isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+                color: catColor,
+                size: 18,
+              ),
+            ),
+            title: Text(
+              item.description,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              [
+                if (catName.isNotEmpty) catName,
+                if (dateLabel.isNotEmpty) dateLabel,
+                if (isExpense) (item.isPaid ? 'Pago' : 'Pendente'),
+              ].join(' • '),
+              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$sign R\$ ${item.amount.toStringAsFixed(2)}',
+                  style: TextStyle(color: amountColor, fontWeight: FontWeight.w800, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isExpense)
+                      IconButton(
+                        onPressed: () => onTogglePaid(!item.isPaid),
+                        icon: Icon(
+                          item.isPaid ? Icons.check_circle : Icons.schedule,
+                          color: item.isPaid ? const Color(0xFF10B981) : const Color(0xFFFBBF24),
+                          size: 18,
+                        ),
+                        tooltip: item.isPaid ? 'Marcar como não paga' : 'Marcar como paga',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                    buildMenu(),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          leading: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: catColor.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: catColor.withOpacity(0.35)),
+            ),
+            child: Icon(
+              isIncome ? Icons.arrow_downward : Icons.arrow_upward,
+              color: catColor,
+              size: 18,
+            ),
+          ),
+          title: Text(
+            item.description,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            [
+              if (catName.isNotEmpty) catName,
+              if (dateLabel.isNotEmpty) dateLabel,
+            ].join(' • '),
+            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isExpense) ...[
+                Transform.scale(
+                  scale: 0.80,
+                  child: Switch(
+                    value: item.isPaid,
+                    onChanged: onTogglePaid,
+                    activeColor: const Color(0xFF00C9A7),
+                    activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -844,32 +967,32 @@ class _TxRow extends StatelessWidget {
                   ],
                 ],
               ),
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              onPressed: onViewAttachments,
-              icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 16),
-              tooltip: 'Comprovantes',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-            IconButton(
-              onPressed: onEdit,
-              icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 16),
-              tooltip: 'Editar',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-            IconButton(
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
-              tooltip: 'Excluir',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-          ],
-        ),
-      ),
+              const SizedBox(width: 6),
+              IconButton(
+                onPressed: onViewAttachments,
+                icon: Icon(Icons.attach_file, color: Colors.white.withOpacity(0.8), size: 16),
+                tooltip: 'Comprovantes',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              IconButton(
+                onPressed: onEdit,
+                icon: Icon(Icons.edit, color: Colors.white.withOpacity(0.8), size: 16),
+                tooltip: 'Editar',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
+                tooltip: 'Excluir',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

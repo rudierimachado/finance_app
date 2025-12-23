@@ -65,7 +65,13 @@ class _WorkspaceOnboardingScreenState extends State<WorkspaceOnboardingScreen> {
       if (!mounted) return;
       if (resp.statusCode == 200) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => HomeShell(userId: userId)),
+          MaterialPageRoute(
+            builder: (_) => HomeShell(
+              userId: userId,
+              initialWorkspaceId: workspaceId,
+              initialWorkspaceName: workspaceName,
+            ),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

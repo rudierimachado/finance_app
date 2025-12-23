@@ -39,7 +39,7 @@ dependencies:
   http_parser: ^4.0.2
   local_auth: ^2.1.7
   flutter_secure_storage: ^9.0.0
-  uni_links: ^0.5.1
+  app_links: ^7.0.0
 
 dev_dependencies:
   flutter_test:

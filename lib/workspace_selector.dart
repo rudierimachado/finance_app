@@ -70,7 +70,7 @@ class _WorkspaceSelectorPageState extends State<WorkspaceSelectorPage> {
     }
   }
 
-  Future<void> _selectWorkspace(int workspaceId) async {
+  Future<void> _selectWorkspace(int workspaceId, {String? workspaceName}) async {
     try {
       final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/$workspaceId/activate?user_id=${widget.userId}');
       final response = await http.post(uri, headers: {'Content-Type': 'application/json'});
@@ -79,7 +79,11 @@ class _WorkspaceSelectorPageState extends State<WorkspaceSelectorPage> {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => HomeShell(userId: widget.userId),
+            builder: (_) => HomeShell(
+              userId: widget.userId,
+              initialWorkspaceId: workspaceId,
+              initialWorkspaceName: workspaceName,
+            ),
           ),
         );
       } else {
@@ -136,7 +140,7 @@ class _WorkspaceSelectorPageState extends State<WorkspaceSelectorPage> {
           
           // Não resetar _creating aqui, deixar até navegar
           if (!mounted) return;
-          _selectWorkspace(newWorkspaceId);
+          _selectWorkspace(newWorkspaceId, workspaceName: workspaceName);
         }
       } else {
         setState(() {
@@ -314,7 +318,7 @@ class _WorkspaceSelectorPageState extends State<WorkspaceSelectorPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => _selectWorkspace(workspace.id),
+        onTap: () => _selectWorkspace(workspace.id, workspaceName: workspace.name),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Row(

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:uni_links/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import 'login.dart';
 import 'register.dart';
 import 'workspace_onboarding_screen.dart';
@@ -18,6 +18,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  final _appLinks = AppLinks();
 
   @override
   void initState() {
@@ -28,14 +29,14 @@ class _MyAppState extends State<MyApp> {
   Future<void> _initDeepLinks() async {
     // Deep link inicial (app frio)
     try {
-      final initialUri = await getInitialUri();
+      final initialUri = await _appLinks.getInitialLink();
       if (initialUri != null) {
         _handleUri(initialUri);
       }
     } catch (_) {}
 
     // Deep links em runtime
-    uriLinkStream.listen((uri) {
+    _appLinks.uriLinkStream.listen((uri) {
       if (uri != null) _handleUri(uri);
     }, onError: (_) {});
   }

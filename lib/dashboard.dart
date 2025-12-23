@@ -84,9 +84,27 @@ class _DashboardPageState extends State<DashboardPage> {
     final now = DateTime.now();
     _year = now.year;
     _month = now.month;
-    _future = _fetchDashboard();
+    _future = widget.workspaceId == null
+        ? Future.value(
+            _DashboardData(
+              balance: 0,
+              monthIncome: 0,
+              monthExpense: 0,
+              monthExpensePending: 0,
+              monthIncomePaid: 0,
+              monthExpensePaid: 0,
+              month: _month,
+              year: _year,
+              expenseByCategory: const <_CategorySlice>[],
+              latestTransactions: const <_TxItem>[],
+            ),
+          )
+        : _fetchDashboard();
 
     _refreshListener = () {
+      if (widget.workspaceId == null) {
+        return;
+      }
       final cacheKey = '$_year-$_month-${widget.workspaceId ?? 0}';
       _dataCache.remove(cacheKey);
       if (mounted) {
@@ -185,6 +203,31 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Evitar requisições sem workspace_id enquanto o HomeShell ainda está resolvendo
+    // o workspace ativo. Isso impede misturar dados entre workspaces.
+    if (widget.workspaceId == null) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF0F2027),
+                Color(0xFF203A43),
+                Color(0xFF2C5364),
+              ],
+            ),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C9A7)),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         heroTag: 'dashboard_fab',
