@@ -35,6 +35,35 @@ class _DashboardPageState extends State<DashboardPage> {
   // Cache de dados por mês/ano para evitar refetch
   final Map<String, _DashboardData> _dataCache = {};
 
+  void _prevMonth() {
+    setState(() {
+      if (_month == 1) {
+        _month = 12;
+        _year -= 1;
+      } else {
+        _month -= 1;
+      }
+      _future = _fetchDashboard();
+    });
+  }
+
+  void _nextMonth() {
+    setState(() {
+      if (_month == 12) {
+        _month = 1;
+        _year += 1;
+      } else {
+        _month += 1;
+      }
+      _future = _fetchDashboard();
+    });
+  }
+
+  // Limpa cache quando adiciona/edita transação
+  void _clearCache() {
+    _dataCache.clear();
+  }
+
   @override
   void didUpdateWidget(covariant DashboardPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -191,6 +220,9 @@ class _DashboardPageState extends State<DashboardPage> {
         year: year,
         expenseByCategory: categories,
         latestTransactions: _parseLatestTransactions(data['latest_transactions']),
+        timeSeries: _parseTimeSeries(data['time_series']),
+        goals: _parseGoals(data['goals']),
+        comparisons: _parseComparisons(data['comparisons']),
       );
 
       // Armazena no cache
@@ -364,6 +396,42 @@ class _DashboardPageState extends State<DashboardPage> {
                             ),
                             const SizedBox(height: 10),
                             _PieSection(slices: data.expenseByCategory),
+                            if ((data.timeSeries?.daily ?? const <_TimePoint>[]).isNotEmpty) ...[
+                              const SizedBox(height: 18),
+                              const _LineChartCard(
+                                title: 'Evolução do saldo (dia a dia)',
+                              ),
+                              const SizedBox(height: 10),
+                              _LineChart(
+                                points: data.timeSeries!.daily
+                                    .map((p) => _LinePoint(x: p.date.millisecondsSinceEpoch.toDouble(), y: p.balance))
+                                    .toList(growable: false),
+                                strokeColor: const Color(0xFF00C9A7),
+                                fillColor: const Color(0xFF00C9A7),
+                              ),
+                            ],
+                            if ((data.timeSeries?.monthly ?? const <_MonthPoint>[]).isNotEmpty) ...[
+                              const SizedBox(height: 18),
+                              const _LineChartCard(
+                                title: 'Evolução do saldo (12 meses)',
+                              ),
+                              const SizedBox(height: 10),
+                              _LineChart(
+                                points: data.timeSeries!.monthly
+                                    .map((p) => _LinePoint(x: (p.year * 12 + p.month).toDouble(), y: p.balance))
+                                    .toList(growable: false),
+                                strokeColor: const Color(0xFF00B4D8),
+                                fillColor: const Color(0xFF00B4D8),
+                              ),
+                            ],
+                            if (data.goals != null) ...[
+                              const SizedBox(height: 18),
+                              _GoalsCard(goals: data.goals!),
+                            ],
+                            if (data.comparisons != null) ...[
+                              const SizedBox(height: 18),
+                              _ComparisonsCard(comparisons: data.comparisons!),
+                            ],
                             const SizedBox(height: 18),
                           ],
                         ),
@@ -635,6 +703,9 @@ class _DashboardData {
   final int year;
   final List<_CategorySlice> expenseByCategory;
   final List<_TxItem> latestTransactions;
+  final _TimeSeries? timeSeries;
+  final _GoalsData? goals;
+  final _ComparisonsData? comparisons;
 
   _DashboardData({
     required this.balance,
@@ -647,7 +718,599 @@ class _DashboardData {
     required this.year,
     required this.expenseByCategory,
     required this.latestTransactions,
+    this.timeSeries,
+    this.goals,
+    this.comparisons,
   });
+}
+
+class _TimeSeries {
+  final List<_TimePoint> daily;
+  final List<_MonthPoint> monthly;
+
+  const _TimeSeries({
+    required this.daily,
+    required this.monthly,
+  });
+}
+
+class _TimePoint {
+  final DateTime date;
+  final double incomePaid;
+  final double expensePaid;
+  final double balance;
+
+  const _TimePoint({
+    required this.date,
+    required this.incomePaid,
+    required this.expensePaid,
+    required this.balance,
+  });
+}
+
+class _MonthPoint {
+  final int year;
+  final int month;
+  final double incomePaid;
+  final double expensePaid;
+  final double balance;
+
+  const _MonthPoint({
+    required this.year,
+    required this.month,
+    required this.incomePaid,
+    required this.expensePaid,
+    required this.balance,
+  });
+}
+
+class _GoalsData {
+  final double incomeGoal;
+  final double incomeActual;
+  final double expenseGoal;
+  final double expenseActual;
+
+  const _GoalsData({
+    required this.incomeGoal,
+    required this.incomeActual,
+    required this.expenseGoal,
+    required this.expenseActual,
+  });
+}
+
+class _ComparisonsData {
+  final _ComparisonPeriod monthCurrent;
+  final _ComparisonPeriod monthPrevious;
+  final _ComparisonPeriod yearCurrent;
+  final _ComparisonPeriod yearPrevious;
+
+  const _ComparisonsData({
+    required this.monthCurrent,
+    required this.monthPrevious,
+    required this.yearCurrent,
+    required this.yearPrevious,
+  });
+}
+
+class _ComparisonPeriod {
+  final int? year;
+  final int? month;
+  final double incomePaid;
+  final double expensePaid;
+  final double balance;
+
+  const _ComparisonPeriod({
+    required this.year,
+    required this.month,
+    required this.incomePaid,
+    required this.expensePaid,
+    required this.balance,
+  });
+}
+
+_TimeSeries? _parseTimeSeries(dynamic raw) {
+  if (raw is! Map) return null;
+  final dailyRaw = raw['daily'];
+  final monthlyRaw = raw['monthly'];
+
+  final daily = <_TimePoint>[];
+  if (dailyRaw is List) {
+    for (final e in dailyRaw) {
+      if (e is! Map) continue;
+      final dateStr = e['date']?.toString();
+      final dt = dateStr != null ? DateTime.tryParse(dateStr) : null;
+      if (dt == null) continue;
+      daily.add(_TimePoint(
+        date: dt,
+        incomePaid: (e['income_paid'] as num? ?? 0).toDouble(),
+        expensePaid: (e['expense_paid'] as num? ?? 0).toDouble(),
+        balance: (e['balance'] as num? ?? 0).toDouble(),
+      ));
+    }
+  }
+
+  final monthly = <_MonthPoint>[];
+  if (monthlyRaw is List) {
+    for (final e in monthlyRaw) {
+      if (e is! Map) continue;
+      final y = (e['year'] as num?)?.toInt();
+      final m = (e['month'] as num?)?.toInt();
+      if (y == null || m == null) continue;
+      monthly.add(_MonthPoint(
+        year: y,
+        month: m,
+        incomePaid: (e['income_paid'] as num? ?? 0).toDouble(),
+        expensePaid: (e['expense_paid'] as num? ?? 0).toDouble(),
+        balance: (e['balance'] as num? ?? 0).toDouble(),
+      ));
+    }
+  }
+
+  if (daily.isEmpty && monthly.isEmpty) return null;
+  return _TimeSeries(daily: daily, monthly: monthly);
+}
+
+_GoalsData? _parseGoals(dynamic raw) {
+  if (raw is! Map) return null;
+  final incomeGoal = (raw['income_goal'] as num? ?? 0).toDouble();
+  final incomeActual = (raw['income_actual'] as num? ?? 0).toDouble();
+  final expenseGoal = (raw['expense_goal'] as num? ?? 0).toDouble();
+  final expenseActual = (raw['expense_actual'] as num? ?? 0).toDouble();
+  return _GoalsData(
+    incomeGoal: incomeGoal,
+    incomeActual: incomeActual,
+    expenseGoal: expenseGoal,
+    expenseActual: expenseActual,
+  );
+}
+
+_ComparisonPeriod? _parseComparisonPeriod(dynamic raw) {
+  if (raw is! Map) return null;
+  return _ComparisonPeriod(
+    year: (raw['year'] as num?)?.toInt(),
+    month: (raw['month'] as num?)?.toInt(),
+    incomePaid: (raw['income_paid'] as num? ?? 0).toDouble(),
+    expensePaid: (raw['expense_paid'] as num? ?? 0).toDouble(),
+    balance: (raw['balance'] as num? ?? 0).toDouble(),
+  );
+}
+
+_ComparisonsData? _parseComparisons(dynamic raw) {
+  if (raw is! Map) return null;
+  final mc = _parseComparisonPeriod(raw['month_current']);
+  final mp = _parseComparisonPeriod(raw['month_previous']);
+  final yc = _parseComparisonPeriod(raw['year_current']);
+  final yp = _parseComparisonPeriod(raw['year_previous']);
+  if (mc == null || mp == null || yc == null || yp == null) return null;
+  return _ComparisonsData(monthCurrent: mc, monthPrevious: mp, yearCurrent: yc, yearPrevious: yp);
+}
+
+class _LineChartCard extends StatelessWidget {
+  final String title;
+
+  const _LineChartCard({
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.9),
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _LinePoint {
+  final double x;
+  final double y;
+
+  const _LinePoint({required this.x, required this.y});
+}
+
+class _LineChart extends StatelessWidget {
+  final List<_LinePoint> points;
+  final Color strokeColor;
+  final Color fillColor;
+
+  const _LineChart({
+    required this.points,
+    required this.strokeColor,
+    required this.fillColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: 160,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: CustomPaint(
+        painter: _LineChartPainter(
+          points: points,
+          strokeColor: strokeColor,
+          fillColor: fillColor,
+          gridColor: Colors.white.withOpacity(0.10),
+        ),
+      ),
+    );
+  }
+}
+
+class _LineChartPainter extends CustomPainter {
+  final List<_LinePoint> points;
+  final Color strokeColor;
+  final Color fillColor;
+  final Color gridColor;
+
+  _LineChartPainter({
+    required this.points,
+    required this.strokeColor,
+    required this.fillColor,
+    required this.gridColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+
+    final minX = points.map((p) => p.x).reduce(math.min);
+    final maxX = points.map((p) => p.x).reduce(math.max);
+    final minY = points.map((p) => p.y).reduce(math.min);
+    final maxY = points.map((p) => p.y).reduce(math.max);
+
+    final dx = (maxX - minX).abs() < 1e-9 ? 1.0 : (maxX - minX);
+    final dy = (maxY - minY).abs() < 1e-9 ? 1.0 : (maxY - minY);
+
+    const padding = 6.0;
+    final w = size.width - padding * 2;
+    final h = size.height - padding * 2;
+
+    void drawGrid() {
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = gridColor;
+
+      for (int i = 1; i <= 3; i++) {
+        final y = padding + (h * i / 4);
+        canvas.drawLine(Offset(padding, y), Offset(padding + w, y), paint);
+      }
+    }
+
+    Offset toOffset(_LinePoint p) {
+      final xNorm = (p.x - minX) / dx;
+      final yNorm = (p.y - minY) / dy;
+      final x = padding + xNorm * w;
+      final y = padding + (1 - yNorm) * h;
+      return Offset(x, y);
+    }
+
+    drawGrid();
+
+    final path = Path();
+    final first = toOffset(points.first);
+    path.moveTo(first.dx, first.dy);
+    for (int i = 1; i < points.length; i++) {
+      final o = toOffset(points[i]);
+      path.lineTo(o.dx, o.dy);
+    }
+
+    final fillPath = Path.from(path)
+      ..lineTo(padding + w, padding + h)
+      ..lineTo(padding, padding + h)
+      ..close();
+
+    final fillPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = fillColor.withOpacity(0.12);
+    canvas.drawPath(fillPath, fillPaint);
+
+    final linePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..color = strokeColor;
+    canvas.drawPath(path, linePaint);
+
+    final dotPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = strokeColor;
+
+    final step = math.max(1, (points.length / 12).floor()).toInt();
+    for (int i = 0; i < points.length; i += step) {
+      final o = toOffset(points[i]);
+      canvas.drawCircle(o, 3.2, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LineChartPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.strokeColor != strokeColor ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.gridColor != gridColor;
+  }
+}
+
+class _GoalsCard extends StatelessWidget {
+  final _GoalsData goals;
+
+  const _GoalsCard({required this.goals});
+
+  double _pct(double actual, double goal) {
+    if (goal <= 0) return 0;
+    final v = actual / goal;
+    if (v.isNaN || v.isInfinite) return 0;
+    return v.clamp(0, 1).toDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final incomePct = _pct(goals.incomeActual, goals.incomeGoal);
+    final expensePct = _pct(goals.expenseActual, goals.expenseGoal);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Meta vs realizado (mês)',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _GoalRow(
+            label: 'Receitas',
+            goal: goals.incomeGoal,
+            actual: goals.incomeActual,
+            progress: incomePct,
+            color: const Color(0xFF10B981),
+          ),
+          const SizedBox(height: 12),
+          _GoalRow(
+            label: 'Gastos',
+            goal: goals.expenseGoal,
+            actual: goals.expenseActual,
+            progress: expensePct,
+            color: const Color(0xFFEF4444),
+            invert: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoalRow extends StatelessWidget {
+  final String label;
+  final double goal;
+  final double actual;
+  final double progress;
+  final Color color;
+  final bool invert;
+
+  const _GoalRow({
+    required this.label,
+    required this.goal,
+    required this.actual,
+    required this.progress,
+    required this.color,
+    this.invert = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pctLabel = (progress * 100).toStringAsFixed(0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(color: Colors.white.withOpacity(0.80), fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              'R\$ ${actual.toStringAsFixed(2)} / R\$ ${goal.toStringAsFixed(2)}',
+              style: TextStyle(color: Colors.white.withOpacity(0.85), fontWeight: FontWeight.w700, fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 10,
+            backgroundColor: Colors.white.withOpacity(0.10),
+            valueColor: AlwaysStoppedAnimation<Color>(color.withOpacity(0.85)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          invert ? 'Quanto menor, melhor • $pctLabel%' : 'Quanto maior, melhor • $pctLabel%',
+          style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 11),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComparisonsCard extends StatelessWidget {
+  final _ComparisonsData comparisons;
+
+  const _ComparisonsCard({required this.comparisons});
+
+  @override
+  Widget build(BuildContext context) {
+    final monthDelta = comparisons.monthCurrent.balance - comparisons.monthPrevious.balance;
+    final yearDelta = comparisons.yearCurrent.balance - comparisons.yearPrevious.balance;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Comparativos',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _CompareBlock(
+            title: 'Mês atual vs mês anterior',
+            currentLabel: 'Atual',
+            previousLabel: (comparisons.monthPrevious.month != null && comparisons.monthPrevious.year != null)
+                ? '${comparisons.monthPrevious.month}/${comparisons.monthPrevious.year}'
+                : 'Anterior',
+            current: comparisons.monthCurrent,
+            previous: comparisons.monthPrevious,
+            deltaBalance: monthDelta,
+          ),
+          const SizedBox(height: 14),
+          _CompareBlock(
+            title: 'Ano atual vs ano anterior',
+            currentLabel: (comparisons.yearCurrent.year != null) ? '${comparisons.yearCurrent.year}' : 'Atual',
+            previousLabel: (comparisons.yearPrevious.year != null) ? '${comparisons.yearPrevious.year}' : 'Anterior',
+            current: comparisons.yearCurrent,
+            previous: comparisons.yearPrevious,
+            deltaBalance: yearDelta,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompareBlock extends StatelessWidget {
+  final String title;
+  final String currentLabel;
+  final String previousLabel;
+  final _ComparisonPeriod current;
+  final _ComparisonPeriod previous;
+  final double deltaBalance;
+
+  const _CompareBlock({
+    required this.title,
+    required this.currentLabel,
+    required this.previousLabel,
+    required this.current,
+    required this.previous,
+    required this.deltaBalance,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isPositive = deltaBalance >= 0;
+    final deltaColor = isPositive ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final deltaSign = isPositive ? '+' : '-';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: deltaColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: deltaColor.withOpacity(0.35)),
+                ),
+                child: Text(
+                  '$deltaSign R\$ ${deltaBalance.abs().toStringAsFixed(2)}',
+                  style: TextStyle(color: deltaColor, fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _CompareRow(label: 'Saldo ($currentLabel)', value: current.balance),
+          const SizedBox(height: 6),
+          _CompareRow(label: 'Saldo ($previousLabel)', value: previous.balance),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompareRow extends StatelessWidget {
+  final String label;
+  final double value;
+
+  const _CompareRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: Colors.white.withOpacity(0.75), fontWeight: FontWeight.w600),
+          ),
+        ),
+        Text(
+          'R\$ ${value.toStringAsFixed(2)}',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+      ],
+    );
+  }
 }
 
 List<_TxItem> _parseLatestTransactions(dynamic raw) {
@@ -706,37 +1369,6 @@ class _TxItem {
     required this.categoryName,
     required this.categoryColor,
   });
-}
-
-extension on _DashboardPageState {
-  void _prevMonth() {
-    setState(() {
-      if (_month == 1) {
-        _month = 12;
-        _year -= 1;
-      } else {
-        _month -= 1;
-      }
-      _future = _fetchDashboard();
-    });
-  }
-
-  void _nextMonth() {
-    setState(() {
-      if (_month == 12) {
-        _month = 1;
-        _year += 1;
-      } else {
-        _month += 1;
-      }
-      _future = _fetchDashboard();
-    });
-  }
-
-  // Limpa cache quando adiciona/edita transação
-  void _clearCache() {
-    _dataCache.clear();
-  }
 }
 
 class _CategorySlice {

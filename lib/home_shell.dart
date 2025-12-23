@@ -11,6 +11,7 @@ import 'package:local_auth/local_auth.dart';
 import 'add_transaction.dart';
 import 'config.dart';
 import 'dashboard.dart';
+import 'planning_page.dart';
 import 'transactions_page.dart';
 import 'workspace_selector.dart';
 
@@ -218,7 +219,7 @@ class _HomeShellState extends State<HomeShell> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white70),
-            onPressed: () => setState(() => _index = 2),
+            onPressed: () => setState(() => _index = 3),
             tooltip: 'Ajustes',
           ),
         ],
@@ -247,6 +248,7 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           DashboardPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           TransactionsPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
+          PlanningPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           _SettingsPlaceholderPage(
             userId: widget.userId,
             activeWorkspaceId: _activeWorkspaceId,
@@ -278,6 +280,11 @@ class _HomeShellState extends State<HomeShell> {
               icon: Icon(Icons.list_alt_outlined),
               activeIcon: Icon(Icons.list_alt),
               label: 'Transações',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.insights_outlined),
+              activeIcon: Icon(Icons.insights),
+              label: 'Planejamento',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.settings_outlined),
