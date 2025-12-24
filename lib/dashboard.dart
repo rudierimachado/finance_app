@@ -28,12 +28,23 @@ class _DashboardPageState extends State<DashboardPage> {
   late final VoidCallback _refreshListener;
 
   double? _currentBalance;
+  double? _currentBalanceAccumulated;
   double? _currentIncomePaid;
   double? _currentExpensePaid;
   double? _currentExpensePending;
+  double? _openingBalance;
 
   // Cache de dados por mês/ano para evitar refetch
   final Map<String, _DashboardData> _dataCache = {};
+
+  void _resetLocalTotals() {
+    _currentBalance = null;
+    _currentBalanceAccumulated = null;
+    _currentIncomePaid = null;
+    _currentExpensePaid = null;
+    _currentExpensePending = null;
+    _openingBalance = null;
+  }
 
   void _prevMonth() {
     setState(() {
@@ -43,6 +54,7 @@ class _DashboardPageState extends State<DashboardPage> {
       } else {
         _month -= 1;
       }
+      _resetLocalTotals();
       _future = _fetchDashboard();
     });
   }
@@ -55,6 +67,7 @@ class _DashboardPageState extends State<DashboardPage> {
       } else {
         _month += 1;
       }
+      _resetLocalTotals();
       _future = _fetchDashboard();
     });
   }
@@ -69,10 +82,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.workspaceId != widget.workspaceId) {
       _clearCache();
-      _currentBalance = null;
-      _currentIncomePaid = null;
-      _currentExpensePaid = null;
-      _currentExpensePending = null;
+      _resetLocalTotals();
       _future = _fetchDashboardFor(_year, _month);
     }
   }
@@ -81,7 +91,9 @@ class _DashboardPageState extends State<DashboardPage> {
     _currentIncomePaid = data.monthIncomePaid;
     _currentExpensePaid = data.monthExpensePaid;
     _currentBalance = data.balance;
+    _currentBalanceAccumulated = data.balanceAccumulated;
     _currentExpensePending = data.monthExpensePending;
+    _openingBalance = data.openingBalance;
   }
 
   void _applyOptimisticPaidChange(_TxItem tx, bool isPaid) {
@@ -101,6 +113,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _currentIncomePaid = nextIncomePaid < 0 ? 0 : nextIncomePaid;
       _currentExpensePaid = nextExpensePaid < 0 ? 0 : nextExpensePaid;
       _currentBalance = (_currentIncomePaid ?? 0) - (_currentExpensePaid ?? 0);
+      _currentBalanceAccumulated = (_openingBalance ?? 0) + (_currentBalance ?? 0);
     });
   }
 
@@ -117,6 +130,8 @@ class _DashboardPageState extends State<DashboardPage> {
         ? Future.value(
             _DashboardData(
               balance: 0,
+              balanceAccumulated: 0,
+              openingBalance: 0,
               monthIncome: 0,
               monthExpense: 0,
               monthExpensePending: 0,
@@ -138,10 +153,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _dataCache.remove(cacheKey);
       if (mounted) {
         setState(() {
-          _currentBalance = null;
-          _currentIncomePaid = null;
-          _currentExpensePaid = null;
-          _currentExpensePending = null;
+          _resetLocalTotals();
           _future = _fetchDashboardFor(_year, _month);
         });
       }
@@ -187,6 +199,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
     if (response.statusCode == 200 && (data['success'] == true)) {
       final balance = (data['balance'] as num? ?? 0).toDouble();
+      final balanceAccumulated = (data['balance_accumulated'] as num? ?? balance).toDouble();
+      final openingBalance = (data['opening_balance'] as num? ?? 0).toDouble();
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
       final monthExpensePending = (data['month_expense_pending'] as num? ?? 0).toDouble();
@@ -211,6 +225,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
       final dashData = _DashboardData(
         balance: balance,
+        balanceAccumulated: balanceAccumulated,
+        openingBalance: openingBalance,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
         monthExpensePending: monthExpensePending,
@@ -331,9 +347,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       onPressed: () {
                         setState(() {
                           _clearCache();
-                          _currentBalance = null;
-                          _currentIncomePaid = null;
-                          _currentExpensePaid = null;
+                          _resetLocalTotals();
                           _future = _fetchDashboard();
                         });
                       },
@@ -369,12 +383,15 @@ class _DashboardPageState extends State<DashboardPage> {
                       if (_currentBalance == null) {
                         _syncLocalTotalsFromServer(data);
                       }
-                      final effectiveBalance = _currentBalance ?? data.balance;
+                      final effectiveMonthBalance = _currentBalance ?? data.balance;
+                      final effectiveAccumulated = _currentBalanceAccumulated ?? data.balanceAccumulated;
                       return SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _BalanceCard(balance: effectiveBalance),
+                            _BalanceCard(title: 'Saldo acumulado', balance: effectiveAccumulated),
+                            const SizedBox(height: 12),
+                            _MonthBalanceCard(balance: effectiveMonthBalance),
                             const SizedBox(height: 18),
                             _MonthSummaryCard(
                               monthIncome: data.monthIncome,
@@ -506,6 +523,8 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
 
     if (response.statusCode == 200 && (data['success'] == true)) {
       final balance = (data['balance'] as num? ?? 0).toDouble();
+      final balanceAccumulated = (data['balance_accumulated'] as num? ?? balance).toDouble();
+      final openingBalance = (data['opening_balance'] as num? ?? 0).toDouble();
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
       final monthExpensePending = (data['month_expense_pending'] as num? ?? 0).toDouble();
@@ -516,6 +535,8 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
 
       return _DashboardData(
         balance: balance,
+        balanceAccumulated: balanceAccumulated,
+        openingBalance: openingBalance,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
         monthExpensePending: monthExpensePending,
@@ -694,6 +715,8 @@ class _ComparisonRow extends StatelessWidget {
 
 class _DashboardData {
   final double balance;
+  final double balanceAccumulated;
+  final double openingBalance;
   final double monthIncome;
   final double monthExpense;
   final double monthExpensePending;
@@ -709,6 +732,8 @@ class _DashboardData {
 
   _DashboardData({
     required this.balance,
+    required this.balanceAccumulated,
+    required this.openingBalance,
     required this.monthIncome,
     required this.monthExpense,
     required this.monthExpensePending,
@@ -1713,9 +1738,10 @@ class _PieChartPainter extends CustomPainter {
 }
 
 class _BalanceCard extends StatelessWidget {
+  final String title;
   final double balance;
 
-  const _BalanceCard({super.key, required this.balance});
+  const _BalanceCard({super.key, required this.title, required this.balance});
 
   @override
   Widget build(BuildContext context) {
@@ -1742,9 +1768,9 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Saldo total atual',
-            style: TextStyle(
+          Text(
+            title,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1759,6 +1785,51 @@ class _BalanceCard extends StatelessWidget {
               fontSize: 34,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MonthBalanceCard extends StatelessWidget {
+  final double balance;
+
+  const _MonthBalanceCard({required this.balance});
+
+  @override
+  Widget build(BuildContext context) {
+    final formatted = 'R\$ ${balance.toStringAsFixed(2)}';
+    final positive = balance >= 0;
+    final color = positive ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Saldo do mês (pagos)',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            formatted,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
