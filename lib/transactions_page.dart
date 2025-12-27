@@ -522,29 +522,6 @@ class _TransactionsPageState extends State<TransactionsPage> {
         elevation: 0,
       ),
       extendBodyBehindAppBar: true,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'transactions_fab',
-        onPressed: () async {
-          final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => AddTransactionPage(
-                userId: widget.userId,
-                workspaceId: widget.workspaceId,
-              ),
-            ),
-          );
-          if (changed == true && mounted) {
-            setState(() {
-              _currentItems = [];
-              _future = _fetch();
-            });
-            financeRefreshTick.value = financeRefreshTick.value + 1;
-          }
-        },
-        backgroundColor: const Color(0xFF00C9A7),
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -861,12 +838,19 @@ class _TxRow extends StatelessWidget {
     final isIncome = item.type == 'income';
     final amountColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
     final sign = isIncome ? '+' : '-';
+    final installment = _parseInstallmentSuffix(item.description);
+    final titleDesc = installment?.baseDescription ?? item.description;
     final dateLabel = item.date != null
         ? '${item.date!.day.toString().padLeft(2, '0')}/${item.date!.month.toString().padLeft(2, '0')}'
         : '';
     final catColor = item.categoryColor ?? Colors.white.withOpacity(0.25);
     final catName = item.categoryName ?? '';
     final isExpense = item.type == 'expense';
+    final installmentLabel = installment != null
+        ? (installment.index == installment.total
+            ? 'Última parcela (${installment.index}/${installment.total})'
+            : 'Parcela ${installment.index}/${installment.total}')
+        : '';
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -951,7 +935,7 @@ class _TxRow extends StatelessWidget {
                 ),
               ),
               title: Text(
-                item.description,
+                titleDesc,
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -960,6 +944,7 @@ class _TxRow extends StatelessWidget {
                 [
                   if (catName.isNotEmpty) catName,
                   if (dateLabel.isNotEmpty) dateLabel,
+                  if (installmentLabel.isNotEmpty) installmentLabel,
                 ].join(' • '),
                 style: TextStyle(color: Colors.white.withOpacity(0.62), fontSize: 12),
                 maxLines: 1,
@@ -1007,7 +992,7 @@ class _TxRow extends StatelessWidget {
               ),
             ),
             title: Text(
-              item.description,
+              titleDesc,
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1016,6 +1001,7 @@ class _TxRow extends StatelessWidget {
               [
                 if (catName.isNotEmpty) catName,
                 if (dateLabel.isNotEmpty) dateLabel,
+                if (installmentLabel.isNotEmpty) installmentLabel,
               ].join(' • '),
               style: TextStyle(color: Colors.white.withOpacity(0.62), fontSize: 12),
               maxLines: 1,
@@ -1098,4 +1084,28 @@ Color? _parseHexColor(String? hex) {
   final value = int.tryParse(cleaned, radix: 16);
   if (value == null) return null;
   return Color(value);
+}
+
+class _InstallmentInfo {
+  final int index;
+  final int total;
+  final String baseDescription;
+
+  const _InstallmentInfo({
+    required this.index,
+    required this.total,
+    required this.baseDescription,
+  });
+}
+
+_InstallmentInfo? _parseInstallmentSuffix(String description) {
+  final value = description.trim();
+  final re = RegExp(r'\((\d+)\/(\d+)\)\s*$');
+  final m = re.firstMatch(value);
+  if (m == null) return null;
+  final index = int.tryParse(m.group(1) ?? '');
+  final total = int.tryParse(m.group(2) ?? '');
+  if (index == null || total == null || index < 1 || total < 1) return null;
+  final base = value.substring(0, m.start).trim();
+  return _InstallmentInfo(index: index, total: total, baseDescription: base);
 }

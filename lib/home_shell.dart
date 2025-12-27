@@ -9,6 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'add_transaction.dart';
+import 'app_update.dart';
 import 'config.dart';
 import 'dashboard.dart';
 import 'finance_ai_page.dart';
@@ -648,6 +649,17 @@ class _SettingsPageState extends State<_SettingsPage> {
     }
   }
 
+  Future<void> _triggerAppUpdate() async {
+    try {
+      await AppUpdate.triggerUpdate(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao atualizar app: $e')),
+      );
+    }
+  }
+
   Future<void> _setBiometricEnabled(bool value) async {
     if (!mounted || _toggleBusy) return;
     final previousValue = _biometricEnabled;
@@ -868,6 +880,20 @@ class _SettingsPageState extends State<_SettingsPage> {
                               style: TextStyle(color: Colors.white.withOpacity(0.75)),
                             ),
                             activeColor: const Color(0xFF00C9A7),
+                          ),
+                          ListTile(
+                            onTap: _triggerAppUpdate,
+                            leading: const Icon(Icons.system_update, color: Colors.white),
+                            title: const Text(
+                              'Atualizar app',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              kIsWeb
+                                  ? 'Recarregar e buscar a versão mais nova'
+                                  : 'Baixar APK mais recente',
+                              style: TextStyle(color: Colors.white.withOpacity(0.75)),
+                            ),
                           ),
                           ListTile(
                             onTap: _openWorkspaceManager,

@@ -40,6 +40,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   bool _recurringUnlimited = true;
   int _recurringEndMonth = 1;
   int _recurringEndYear = 2025;
+  int _recurringInstallments = 1;
+  String _recurringInstallmentsStart = 'current_month';
 
   final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
@@ -349,6 +351,18 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           _recurringDay = recDay.toInt();
         }
         _recurringUnlimited = (tx['recurring_unlimited'] == true);
+        final recInst = tx['recurring_installments'];
+        if (recInst is num) {
+          _recurringInstallments = recInst.toInt();
+        } else {
+          _recurringInstallments = 1;
+        }
+        final recInstStart = (tx['recurring_installments_start']?.toString() ?? '').trim();
+        if (recInstStart == 'due_date' || recInstStart == 'current_month') {
+          _recurringInstallmentsStart = recInstStart;
+        } else {
+          _recurringInstallmentsStart = 'current_month';
+        }
         final recEnd = tx['recurring_end_date']?.toString();
         if (recEnd != null && recEnd.isNotEmpty) {
           final parsedEnd = DateTime.tryParse(recEnd);
@@ -456,37 +470,163 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Icon(Icons.all_inclusive, color: Colors.white.withOpacity(0.5), size: 22),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  'Sem fim (ilimitado)',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 15,
+          if (_type == 'expense') ...[
+            Row(
+              children: [
+                Icon(Icons.format_list_numbered, color: Colors.white.withOpacity(0.5), size: 22),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Parcelado',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 15,
+                    ),
                   ),
                 ),
+                Switch(
+                  value: !_recurringUnlimited,
+                  onChanged: (v) {
+                    setState(() {
+                      _recurringUnlimited = !v;
+                      if (_recurringUnlimited) {
+                        _recurringInstallments = 1;
+                      } else {
+                        if (_recurringInstallments < 1) {
+                          _recurringInstallments = 1;
+                        }
+                      }
+                    });
+                  },
+                  activeColor: const Color(0xFF00C9A7),
+                  activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+                ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Icon(Icons.all_inclusive, color: Colors.white.withOpacity(0.5), size: 22),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Sem fim (ilimitado)',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                Switch(
+                  value: _recurringUnlimited,
+                  onChanged: (v) {
+                    setState(() {
+                      _recurringUnlimited = v;
+                      if (_recurringUnlimited) {
+                        _recurringInstallments = 1;
+                        final now = DateTime.now();
+                        _recurringEndMonth = now.month;
+                        _recurringEndYear = now.year;
+                      }
+                    });
+                  },
+                  activeColor: const Color(0xFF00C9A7),
+                  activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+                ),
+              ],
+            ),
+          ],
+          if (!_recurringUnlimited && _type == 'expense') ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.10)),
               ),
-              Switch(
-                value: _recurringUnlimited,
-                onChanged: (v) {
-                  setState(() {
-                    _recurringUnlimited = v;
-                    if (_recurringUnlimited) {
-                      final now = DateTime.now();
-                      _recurringEndMonth = now.month;
-                      _recurringEndYear = now.year;
-                    }
-                  });
-                },
-                activeColor: const Color(0xFF00C9A7),
-                activeTrackColor: const Color(0xFF00C9A7).withOpacity(0.3),
+              child: Row(
+                children: [
+                  Icon(Icons.play_arrow_rounded, color: Colors.white.withOpacity(0.5), size: 22),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Começar',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  DropdownButton<String>(
+                    value: _recurringInstallmentsStart,
+                    dropdownColor: const Color(0xFF1A2A35),
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    underline: Container(),
+                    items: const [
+                      DropdownMenuItem<String>(
+                        value: 'current_month',
+                        child: Text('Mês atual'),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'due_date',
+                        child: Text('No vencimento'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() {
+                        _recurringInstallmentsStart = v;
+                      });
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
-          if (!_recurringUnlimited) ...[
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.10)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.confirmation_number_outlined, color: Colors.white.withOpacity(0.5), size: 22),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Parcelas',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  DropdownButton<int>(
+                    value: _recurringInstallments < 1 ? 1 : _recurringInstallments,
+                    dropdownColor: const Color(0xFF1A2A35),
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    underline: Container(),
+                    items: List.generate(36, (index) => index + 1)
+                        .map((n) => DropdownMenuItem<int>(
+                              value: n,
+                              child: Text('$n'),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() {
+                        _recurringInstallments = v;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (!_recurringUnlimited && _type != 'expense') ...[
             const SizedBox(height: 14),
             GestureDetector(
               onTap: _pickRecurringEndMonthYear,
@@ -752,7 +892,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         'is_recurring': _isRecurring,
         'recurring_day': _isRecurring ? _recurringDay : null,
         'recurring_unlimited': _isRecurring ? _recurringUnlimited : null,
-        'recurring_end_date': (_isRecurring && !_recurringUnlimited)
+        'recurring_installments': (_isRecurring && !_recurringUnlimited && _type == 'expense')
+            ? (_recurringInstallments < 1 ? 1 : _recurringInstallments)
+            : null,
+        'recurring_installments_start': (_isRecurring && !_recurringUnlimited && _type == 'expense')
+            ? _recurringInstallmentsStart
+            : null,
+        'recurring_end_date': (_isRecurring && !_recurringUnlimited && _type != 'expense')
             ? _recurringEndDateIso()
             : null,
       };
