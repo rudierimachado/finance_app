@@ -28,6 +28,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
   String _typeFilter = 'all';
   final _queryController = TextEditingController();
 
+  bool _filtersExpanded = false;
+
   late final VoidCallback _refreshListener;
 
   late Future<List<_TxItem>> _future;
@@ -487,6 +489,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
     });
   }
 
+  void _toggleFilters() {
+    setState(() {
+      _filtersExpanded = !_filtersExpanded;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Evitar requisições sem workspace_id enquanto o HomeShell ainda está resolvendo
@@ -553,6 +561,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
                     });
                   },
                   onApply: _applyFilters,
+                  expanded: _filtersExpanded,
+                  onToggleExpanded: _toggleFilters,
                 ),
                 const SizedBox(height: 12),
                 Container(
@@ -663,6 +673,8 @@ class _FiltersBar extends StatelessWidget {
   final VoidCallback onNextMonth;
   final ValueChanged<String> onTypeChanged;
   final VoidCallback onApply;
+  final bool expanded;
+  final VoidCallback onToggleExpanded;
 
   const _FiltersBar({
     required this.year,
@@ -673,6 +685,8 @@ class _FiltersBar extends StatelessWidget {
     required this.onNextMonth,
     required this.onTypeChanged,
     required this.onApply,
+    required this.expanded,
+    required this.onToggleExpanded,
   });
 
   @override
@@ -756,35 +770,44 @@ class _FiltersBar extends StatelessWidget {
                     onPressed: onNextMonth,
                     icon: const Icon(Icons.chevron_right, color: Colors.white),
                   ),
+                  IconButton(
+                    onPressed: onToggleExpanded,
+                    icon: Icon(
+                      expanded ? Icons.filter_list_off : Icons.filter_list,
+                      color: const Color(0xFF00C9A7),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 10),
-              if (compact) ...[
-                dropdown,
+              if (expanded) ...[
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(child: search),
-                    const SizedBox(width: 10),
-                    IconButton(
-                      onPressed: onApply,
-                      icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
-                    ),
-                  ],
-                ),
-              ] else ...[
-                Row(
-                  children: [
-                    Expanded(child: dropdown),
-                    const SizedBox(width: 10),
-                    Expanded(child: search),
-                    const SizedBox(width: 10),
-                    IconButton(
-                      onPressed: onApply,
-                      icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
-                    ),
-                  ],
-                ),
+                if (compact) ...[
+                  dropdown,
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: search),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        onPressed: onApply,
+                        icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Expanded(child: dropdown),
+                      const SizedBox(width: 10),
+                      Expanded(child: search),
+                      const SizedBox(width: 10),
+                      IconButton(
+                        onPressed: onApply,
+                        icon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ],
           ),

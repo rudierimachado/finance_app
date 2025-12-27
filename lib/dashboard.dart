@@ -32,6 +32,7 @@ class _DashboardPageState extends State<DashboardPage> {
   double? _currentExpensePaid;
   double? _currentExpensePending;
   double? _openingBalance;
+  double? _carryoverEffective;
 
   // Cache de dados por mês/ano para evitar refetch
   final Map<String, _DashboardData> _dataCache = {};
@@ -43,6 +44,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _currentExpensePaid = null;
     _currentExpensePending = null;
     _openingBalance = null;
+    _carryoverEffective = null;
   }
 
   void _prevMonth() {
@@ -90,9 +92,10 @@ class _DashboardPageState extends State<DashboardPage> {
     _currentIncomePaid = data.monthIncomePaid;
     _currentExpensePaid = data.monthExpensePaid;
     _currentBalance = data.balance;
-    _currentBalanceAccumulated = data.balanceAccumulated;
+    _currentBalanceAccumulated = data.carryoverEffective + data.balance;
     _currentExpensePending = data.monthExpensePending;
     _openingBalance = data.openingBalance;
+    _carryoverEffective = data.carryoverEffective;
   }
 
   void _applyOptimisticPaidChange(_TxItem tx, bool isPaid) {
@@ -112,7 +115,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _currentIncomePaid = nextIncomePaid < 0 ? 0 : nextIncomePaid;
       _currentExpensePaid = nextExpensePaid < 0 ? 0 : nextExpensePaid;
       _currentBalance = (_currentIncomePaid ?? 0) - (_currentExpensePaid ?? 0);
-      _currentBalanceAccumulated = (_openingBalance ?? 0) + (_currentBalance ?? 0);
+      _currentBalanceAccumulated = (_carryoverEffective ?? (_openingBalance ?? 0)) + (_currentBalance ?? 0);
     });
   }
 
@@ -131,6 +134,8 @@ class _DashboardPageState extends State<DashboardPage> {
               balance: 0,
               balanceAccumulated: 0,
               openingBalance: 0,
+              previousExpensePendingTotal: 0,
+              carryoverEffective: 0,
               monthIncome: 0,
               monthExpense: 0,
               monthExpensePending: 0,
@@ -200,6 +205,8 @@ class _DashboardPageState extends State<DashboardPage> {
       final balance = (data['balance'] as num? ?? 0).toDouble();
       final balanceAccumulated = (data['balance_accumulated'] as num? ?? balance).toDouble();
       final openingBalance = (data['opening_balance'] as num? ?? 0).toDouble();
+      final previousExpensePendingTotal = (data['previous_expense_pending_total'] as num? ?? 0).toDouble();
+      final carryoverEffective = (data['carryover_effective'] as num? ?? openingBalance).toDouble();
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
       final monthExpensePending = (data['month_expense_pending'] as num? ?? 0).toDouble();
@@ -226,6 +233,8 @@ class _DashboardPageState extends State<DashboardPage> {
         balance: balance,
         balanceAccumulated: balanceAccumulated,
         openingBalance: openingBalance,
+        previousExpensePendingTotal: previousExpensePendingTotal,
+        carryoverEffective: carryoverEffective,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
         monthExpensePending: monthExpensePending,
@@ -364,7 +373,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         _syncLocalTotalsFromServer(data);
                       }
                       final effectiveMonthBalance = _currentBalance ?? data.balance;
-                      final effectiveAccumulated = _currentBalanceAccumulated ?? data.balanceAccumulated;
+                      final effectiveAccumulated = _currentBalanceAccumulated ?? (data.carryoverEffective + data.balance);
                       return SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,6 +381,13 @@ class _DashboardPageState extends State<DashboardPage> {
                             _BalanceCard(title: 'Saldo acumulado', balance: effectiveAccumulated),
                             const SizedBox(height: 12),
                             _MonthBalanceCard(balance: effectiveMonthBalance),
+                            const SizedBox(height: 12),
+                            _CarryoverCard(
+                              carryoverEffective: data.carryoverEffective,
+                              previousExpensePendingTotal: data.previousExpensePendingTotal,
+                            ),
+                            const SizedBox(height: 12),
+                            _PaidExpensesCard(monthExpensePaid: data.monthExpensePaid),
                             const SizedBox(height: 18),
                             _MonthSummaryCard(
                               monthIncome: data.monthIncome,
@@ -505,6 +521,8 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
       final balance = (data['balance'] as num? ?? 0).toDouble();
       final balanceAccumulated = (data['balance_accumulated'] as num? ?? balance).toDouble();
       final openingBalance = (data['opening_balance'] as num? ?? 0).toDouble();
+      final previousExpensePendingTotal = (data['previous_expense_pending_total'] as num? ?? 0).toDouble();
+      final carryoverEffective = (data['carryover_effective'] as num? ?? openingBalance).toDouble();
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
       final monthExpensePending = (data['month_expense_pending'] as num? ?? 0).toDouble();
@@ -517,6 +535,8 @@ class _PreviousMonthComparisonCardState extends State<_PreviousMonthComparisonCa
         balance: balance,
         balanceAccumulated: balanceAccumulated,
         openingBalance: openingBalance,
+        previousExpensePendingTotal: previousExpensePendingTotal,
+        carryoverEffective: carryoverEffective,
         monthIncome: monthIncome,
         monthExpense: monthExpense,
         monthExpensePending: monthExpensePending,
@@ -697,6 +717,8 @@ class _DashboardData {
   final double balance;
   final double balanceAccumulated;
   final double openingBalance;
+  final double previousExpensePendingTotal;
+  final double carryoverEffective;
   final double monthIncome;
   final double monthExpense;
   final double monthExpensePending;
@@ -714,6 +736,8 @@ class _DashboardData {
     required this.balance,
     required this.balanceAccumulated,
     required this.openingBalance,
+    required this.previousExpensePendingTotal,
+    required this.carryoverEffective,
     required this.monthIncome,
     required this.monthExpense,
     required this.monthExpensePending,
@@ -727,6 +751,107 @@ class _DashboardData {
     this.goals,
     this.comparisons,
   });
+}
+
+class _CarryoverCard extends StatelessWidget {
+  final double carryoverEffective;
+  final double previousExpensePendingTotal;
+
+  const _CarryoverCard({
+    required this.carryoverEffective,
+    required this.previousExpensePendingTotal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final positive = carryoverEffective >= 0;
+    final color = positive ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Saldo anterior (com pendências)',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'R\$ ${carryoverEffective.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                'Pendências anteriores: R\$ ${previousExpensePendingTotal.toStringAsFixed(2)}',
+                style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 12),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaidExpensesCard extends StatelessWidget {
+  final double monthExpensePaid;
+
+  const _PaidExpensesCard({
+    required this.monthExpensePaid,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Contas pagas do mês',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            'R\$ ${monthExpensePaid.toStringAsFixed(2)}',
+            style: const TextStyle(
+              color: Color(0xFFEF4444),
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TimeSeries {
