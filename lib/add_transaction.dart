@@ -48,6 +48,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   final _categoryController = TextEditingController();
   final _subcategoryController = TextEditingController();
   final _salaryFromController = TextEditingController();
+  final _cardNameController = TextEditingController();
 
   final _amountFocusNode = FocusNode();
 
@@ -333,6 +334,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
         final subText = tx['subcategory_text']?.toString();
         _subcategoryController.text = (subText != null && subText.isNotEmpty) ? subText : '';
+        
+        // Se for cartão de crédito, mover o nome para o campo específico
+        if (_paymentMethod == 'credito' && subText != null && subText.isNotEmpty) {
+          _cardNameController.text = subText;
+          _subcategoryController.clear();
+        }
 
         _paymentMethod = _normalizePaymentMethod(tx['payment_method']);
         _isPaid = (tx['is_paid'] == true);
@@ -678,6 +685,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     _categoryController.dispose();
     _subcategoryController.dispose();
     _salaryFromController.dispose();
+    _cardNameController.dispose();
     super.dispose();
   }
 
@@ -703,6 +711,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         _subcategoryController.clear();
       });
     }
+
+    // Rebuild to avaliar fluxo de cartão quando o usuário digita "cartão"
+    setState(() {});
   }
 
   Future<void> _suggestCategory(String description) async {
@@ -839,6 +850,20 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     return lower == 'salário' || lower == 'salario';
   }
 
+  bool get _isCardFlow {
+    final desc = _descriptionController.text.trim().toLowerCase();
+    final cat = _categoryController.text.trim().toLowerCase();
+    final sub = _subcategoryController.text.trim().toLowerCase();
+    return _type == 'expense' &&
+        (_paymentMethod == 'credito' ||
+            desc.contains('cartão') ||
+            desc.contains('cartao') ||
+            cat.contains('cartão') ||
+            cat.contains('cartao') ||
+            sub.contains('cartão') ||
+            sub.contains('cartao'));
+  }
+
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -888,7 +913,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         'transaction_date': _date.toIso8601String().split('T').first,
         'payment_method': _type == 'expense' ? _paymentMethod : null,
         'is_paid': _type == 'expense' ? _isPaid : true,
-        'subcategory_text': _subcategoryController.text.trim().isNotEmpty ? _subcategoryController.text.trim() : null,
+        'subcategory_text': _isCardFlow
+            ? _cardNameController.text.trim()
+            : _subcategoryController.text.trim().isNotEmpty
+                ? _subcategoryController.text.trim()
+                : null,
         'is_recurring': _isRecurring,
         'recurring_day': _isRecurring ? _recurringDay : null,
         'recurring_unlimited': _isRecurring ? _recurringUnlimited : null,
@@ -1019,10 +1048,19 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               const SizedBox(height: 14),
               _buildModernTextField(
                 controller: _subcategoryController,
-                label: (_type == 'expense' && _paymentMethod == 'credito') ? 'Nome do cartão' : 'Subcategoria',
-                icon: (_type == 'expense' && _paymentMethod == 'credito') ? Icons.credit_card : Icons.label_outline,
-                readOnly: !_manualCategory && !(_type == 'expense' && _paymentMethod == 'credito'),
+                label: 'Subcategoria',
+                icon: Icons.label_outlined,
+                readOnly: !_manualCategory,
               ),
+              // Campo nome do cartão aparece quando fluxo de cartão for detectado
+              if (_isCardFlow) ...[
+                const SizedBox(height: 14),
+                _buildModernTextField(
+                  controller: _cardNameController,
+                  label: 'Nome do cartão',
+                  icon: Icons.credit_card,
+                ),
+              ],
               if (_type == 'income' && _isSalaryCategory) ...[
                 const SizedBox(height: 14),
                 _buildModernTextField(

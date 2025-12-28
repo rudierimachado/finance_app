@@ -81,14 +81,14 @@ class AppUpdater {
     }
   }
 
-  /// Compara duas versões (formato: "1.0.0")
+  /// Compara duas versões (formato flexível, ex: "0.0.0.11")
   static bool _isNewerVersion(String serverVersion, String currentVersion) {
     try {
       final serverParts = serverVersion.split('.').map(int.parse).toList();
       final currentParts = currentVersion.split('.').map(int.parse).toList();
-      while (serverParts.length < 3) serverParts.add(0);
-      while (currentParts.length < 3) currentParts.add(0);
-      for (int i = 0; i < 3; i++) {
+      while (serverParts.length < 4) serverParts.add(0);
+      while (currentParts.length < 4) currentParts.add(0);
+      for (int i = 0; i < serverParts.length; i++) {
         if (serverParts[i] > currentParts[i]) return true;
         if (serverParts[i] < currentParts[i]) return false;
       }

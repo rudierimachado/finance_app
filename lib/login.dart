@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:local_auth/local_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'home_shell.dart';
@@ -32,6 +34,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool _obscurePassword = true;
   bool _rememberMe = false;
   String? _errorMessage;
+  String? _appVersion;
 
   double _stableKeyboardBottom = 0.0;
 
@@ -49,6 +52,19 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     super.initState();
     _initAnimations();
     _checkBiometric();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersion = packageInfo.version;
+      });
+    } catch (_) {
+      // ignora falha silenciosamente
+    }
   }
 
   Future<void> _checkBiometric() async {
@@ -481,6 +497,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             _buildDivider(),
             const SizedBox(height: 24),
             _buildRegisterButton(),
+            const SizedBox(height: 16),
+            if (_appVersion != null)
+              Center(
+                child: Text(
+                  'Versão $_appVersion',
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

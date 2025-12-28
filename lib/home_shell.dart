@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'add_transaction.dart';
 import 'app_update.dart';
@@ -38,12 +39,12 @@ class _HomeShellState extends State<HomeShell> {
   int? _activeWorkspaceId;
   String _activeWorkspaceName = 'Workspace';
   String? _workspaceOwnerName;
-  Timer? _refreshTimer;
   int _lastWorkspaceId = 0;
 
   void _applyWorkspaceChange(int? workspaceId) {
     if (workspaceId != null) {
       setState(() {
+        _index = 0; // sempre leva para dashboard ao trocar workspace
         _activeWorkspaceId = workspaceId;
         _lastWorkspaceId = workspaceId;
       });
@@ -55,7 +56,6 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    _startAutoRefresh();
 
     // VERIFICAÇÃO AUTOMÁTICA DE ATUALIZAÇÕES
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,15 +76,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
     super.dispose();
-  }
-
-  void _startAutoRefresh() {
-    // Auto-refresh a cada 10 segundos para detectar mudanças de workspace
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _checkWorkspaceChanges();
-    });
   }
 
   Future<void> _checkWorkspaceChanges() async {
@@ -101,7 +93,6 @@ class _HomeShellState extends State<HomeShell> {
           
           // Se workspace mudou, atualizar UI e dados
           if (newWorkspaceId != null && newWorkspaceId != _lastWorkspaceId) {
-            print('[AUTO_REFRESH] Workspace mudou de $_lastWorkspaceId para $newWorkspaceId');
             _lastWorkspaceId = newWorkspaceId;
             
             // Recarregar dados do workspace
@@ -109,22 +100,11 @@ class _HomeShellState extends State<HomeShell> {
             
             // Trigger refresh nos componentes filhos
             financeRefreshTick.value = financeRefreshTick.value + 1;
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Workspace sincronizado automaticamente'),
-                  duration: Duration(seconds: 2),
-                  backgroundColor: Color(0xFF00C9A7),
-                ),
-              );
-            }
           }
         }
       }
     } catch (e) {
       // Silenciar erros de conectividade para não spam o usuário
-      print('[AUTO_REFRESH] Erro: $e');
     }
   }
 
@@ -136,16 +116,11 @@ class _HomeShellState extends State<HomeShell> {
       };
       final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspaces/active')
           .replace(queryParameters: params);
-      print('[HOME_SHELL] Carregando workspace ativo para userId=${widget.userId}');
-      print('[HOME_SHELL] URL: $uri');
       
       final response = await http.get(uri, headers: {'Content-Type': 'application/json'});
-      print('[HOME_SHELL] Status: ${response.statusCode}');
-      print('[HOME_SHELL] Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('[HOME_SHELL] Parsed data: $data');
         
         if (data['success'] == true && data['workspace'] != null) {
           final workspace = data['workspace'];
@@ -155,13 +130,8 @@ class _HomeShellState extends State<HomeShell> {
           final workspaceId = workspace['id'] as int?;
 
           if (_activeWorkspaceId != null && workspaceId != null && _activeWorkspaceId != workspaceId) {
-            print('[HOME_SHELL] Ignorando resposta do servidor: workspaceId=$workspaceId (cliente está em $_activeWorkspaceId)');
             return;
           }
-          
-          print('[HOME_SHELL] Workspace name: $workspaceName');
-          print('[HOME_SHELL] Is owner: $isOwner');
-          print('[HOME_SHELL] Owner name: $ownerName');
           
           if (mounted) {
             setState(() {
@@ -174,13 +144,10 @@ class _HomeShellState extends State<HomeShell> {
             if (workspaceId != null) {
               _lastWorkspaceId = workspaceId;
             }
-            
-            print('[HOME_SHELL] Estado atualizado - Nome: $_activeWorkspaceName, Owner: $_workspaceOwnerName, ID: $_activeWorkspaceId');
           }
         }
       }
     } catch (e) {
-      print('Error loading active workspace name: $e');
       if (mounted) {
         setState(() {
           _activeWorkspaceName = 'Workspace';
@@ -624,11 +591,25 @@ class _SettingsPageState extends State<_SettingsPage> {
   bool _biometricEnabled = false;
   bool _toggleBusy = false;
   bool _loading = true;
+  String? _appVersion;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersion = info.version;
+      });
+    } catch (_) {
+      // silencioso
+    }
   }
 
   Future<void> _load() async {
@@ -896,9 +877,11 @@ class _SettingsPageState extends State<_SettingsPage> {
                               style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
-                              kIsWeb
-                                  ? 'Recarregar e buscar a versão mais nova'
-                                  : 'Baixar APK mais recente',
+                              _appVersion != null
+                                  ? 'Versão atual: $_appVersion'
+                                  : (kIsWeb
+                                      ? 'Recarregar e buscar a versão mais nova'
+                                      : 'Baixar APK mais recente'),
                               style: TextStyle(color: Colors.white.withOpacity(0.75)),
                             ),
                           ),
