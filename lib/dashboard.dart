@@ -126,6 +126,8 @@ class _DashboardPageState extends State<DashboardPage> {
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
       final creditCardExpense = (data['credit_card_expense_month'] as num? ?? 0).toDouble();
+      final creditCardTopName = data['credit_card_top_name']?.toString();
+      final creditCardTopAmount = (data['credit_card_top_amount'] as num? ?? 0).toDouble();
       final pendingBillsCount = (data['pending_bills_count'] as num? ?? 0).toInt();
       final overdueBillsCount = (data['overdue_bills_count'] as num? ?? 0).toInt();
       
@@ -158,6 +160,8 @@ class _DashboardPageState extends State<DashboardPage> {
         monthExpense: monthExpense,
         monthExpensePending: monthExpensePending,
         creditCardExpense: creditCardExpense,
+        creditCardTopName: creditCardTopName,
+        creditCardTopAmount: creditCardTopAmount,
         pendingBillsCount: pendingBillsCount,
         overdueBillsCount: overdueBillsCount,
         month: _month,
@@ -418,11 +422,18 @@ class _DashboardPageState extends State<DashboardPage> {
                             Row(
                               children: [
                                 Expanded(
-                                  child: _CartaoCard(valor: data.creditCardExpense),
+                                  child: _CartaoCard(
+                                    valor: data.creditCardExpense,
+                                    topCardName: data.creditCardTopName,
+                                    topCardAmount: data.creditCardTopAmount,
+                                  ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: _ProximasContasCard(),
+                                  child: _ProximasContasCard(
+                                    pendingCount: data.pendingBillsCount,
+                                    overdueCount: data.overdueBillsCount,
+                                  ),
                                 ),
                               ],
                             ),
@@ -818,8 +829,14 @@ class _ResumoMesCard extends StatelessWidget {
 // 💳 Card Cartão
 class _CartaoCard extends StatelessWidget {
   final double valor;
+  final String? topCardName;
+  final double topCardAmount;
 
-  const _CartaoCard({required this.valor});
+  const _CartaoCard({
+    required this.valor,
+    required this.topCardName,
+    required this.topCardAmount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -872,7 +889,9 @@ class _CartaoCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Gastos no cartão este mês',
+            (topCardName != null && topCardName!.trim().isNotEmpty)
+                ? 'Principal: ${topCardName!} (R\$ ${topCardAmount.toStringAsFixed(2)})'
+                : 'Gastos no cartão este mês',
             style: TextStyle(
               color: Colors.white.withOpacity(0.6),
               fontSize: 10,
@@ -886,6 +905,14 @@ class _CartaoCard extends StatelessWidget {
 
 // 📅 Card Próximas Contas (placeholder)
 class _ProximasContasCard extends StatelessWidget {
+  final int pendingCount;
+  final int overdueCount;
+
+  const _ProximasContasCard({
+    required this.pendingCount,
+    required this.overdueCount,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -927,9 +954,9 @@ class _ProximasContasCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            '3 contas',
-            style: TextStyle(
+          Text(
+            '$pendingCount contas',
+            style: const TextStyle(
               color: Color(0xFF00C9A7),
               fontSize: 18,
               fontWeight: FontWeight.w900,
@@ -937,7 +964,7 @@ class _ProximasContasCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Vencendo até dia 15',
+            overdueCount > 0 ? '$overdueCount vencidas' : 'Nenhuma vencida',
             style: TextStyle(
               color: Colors.white.withOpacity(0.6),
               fontSize: 10,
@@ -1013,6 +1040,8 @@ class _DashboardData {
   final double monthExpense;
   final double monthExpensePending;
   final double creditCardExpense;
+  final String? creditCardTopName;
+  final double creditCardTopAmount;
   final int pendingBillsCount;
   final int overdueBillsCount;
   final int month;
@@ -1030,6 +1059,8 @@ class _DashboardData {
     required this.monthExpense,
     required this.monthExpensePending,
     required this.creditCardExpense,
+    required this.creditCardTopName,
+    required this.creditCardTopAmount,
     required this.pendingBillsCount,
     required this.overdueBillsCount,
     required this.month,

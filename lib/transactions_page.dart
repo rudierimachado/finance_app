@@ -310,21 +310,39 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
       });
     }
 
-    // Chamar backend em background
     try {
-      final params = <String, String>{
-        'user_id': widget.userId.toString(),
-        if (widget.workspaceId != null) 'workspace_id': widget.workspaceId.toString(),
-      };
-      
-      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/transactions/$transactionId/set-paid')
-          .replace(queryParameters: params);
+      bool isRouteMismatch(http.Response r) {
+        final bodyLower = r.body.toLowerCase();
+        return bodyLower.contains('<!doctype html>') ||
+            bodyLower.contains('endpoint não encontrado') ||
+            bodyLower.contains('endpoint nao encontrado');
+      }
 
-      final response = await http.post(
+      Uri buildTxUri(String prefix) => Uri.parse(
+        '$apiBaseUrl$prefix/api/transactions/$transactionId?user_id=${widget.userId}',
+      );
+
+      final payload = {
+        'user_id': widget.userId,
+        'is_paid': newStatus,
+        'action': 'set_paid',
+      };
+
+      var uri = buildTxUri('/gerenciamento-financeiro');
+      var response = await http.put(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'is_paid': newStatus}),
+        body: jsonEncode(payload),
       );
+
+      if ((response.statusCode == 404 || response.statusCode == 405) && isRouteMismatch(response)) {
+        uri = buildTxUri('');
+        response = await http.put(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        );
+      }
 
       if (response.statusCode != 200) {
         throw Exception('Erro HTTP ${response.statusCode}');
@@ -335,11 +353,10 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
         throw Exception(responseData['message'] ?? 'Erro desconhecido');
       }
 
-      // Trigger refresh global para dashboard
       financeRefreshTick.value = financeRefreshTick.value + 1;
-
     } catch (e) {
       if (!mounted) return;
+
       // Reverter mudança otimista em caso de erro
       if (itemIndex != -1) {
         setState(() {
@@ -352,7 +369,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
             categoryName: _currentItems[itemIndex].categoryName,
             categoryColor: _currentItems[itemIndex].categoryColor,
             isRecurring: _currentItems[itemIndex].isRecurring,
-            isPaid: !newStatus, // Reverter
+            isPaid: !newStatus,
           );
         });
       }

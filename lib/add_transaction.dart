@@ -1019,9 +1019,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               const SizedBox(height: 14),
               _buildModernTextField(
                 controller: _subcategoryController,
-                label: 'Subcategoria',
-                icon: Icons.label_outline,
-                readOnly: !_manualCategory,
+                label: (_type == 'expense' && _paymentMethod == 'credito') ? 'Nome do cartão' : 'Subcategoria',
+                icon: (_type == 'expense' && _paymentMethod == 'credito') ? Icons.credit_card : Icons.label_outline,
+                readOnly: !_manualCategory && !(_type == 'expense' && _paymentMethod == 'credito'),
               ),
               if (_type == 'income' && _isSalaryCategory) ...[
                 const SizedBox(height: 14),
@@ -1296,14 +1296,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     );
   }
 
-
   Widget _buildPaymentMethodDropdown() {
     final methods = [
       {'value': '', 'label': 'Não informado'},
       {'value': 'dinheiro', 'label': 'Dinheiro'},
       {'value': 'pix', 'label': 'PIX'},
-      {'value': 'debito', 'label': 'Cartão de Débito'},
-      {'value': 'credito', 'label': 'Cartão de Crédito'},
+      {'value': 'debito', 'label': 'Débito'},
+      {'value': 'credito', 'label': 'Cartão de crédito'},
       {'value': 'transferencia', 'label': 'Transferência'},
       {'value': 'boleto', 'label': 'Boleto'},
     ];
@@ -1338,6 +1337,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         onChanged: (v) {
           setState(() {
             _paymentMethod = (v == null || v.isEmpty) ? null : v;
+            if (_paymentMethod != 'credito') {
+              _subcategoryController.clear();
+            }
           });
         },
       ),
