@@ -55,6 +55,15 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    _loadWorkspaces();
+
+    // VERIFICAÇÃO AUTOMÁTICA DE ATUALIZAÇÕES
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppUpdater.checkForUpdatesAutomatically(context);
+      }
+    });
+
     _activeWorkspaceId = widget.initialWorkspaceId;
     if (widget.initialWorkspaceName != null && widget.initialWorkspaceName!.isNotEmpty) {
       _activeWorkspaceName = widget.initialWorkspaceName!;
