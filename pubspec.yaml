@@ -1,3 +1,12 @@
+name: finance_app_new
+description: "Aplicativo de gerenciamento financeiro"
+publish_to: "none"
+
+version: 1.0.0+2002
+
+environment:
+  sdk: '^3.10.0'
+
 dependencies:
   flutter:
     sdk: flutter
@@ -5,11 +14,13 @@ dependencies:
   http: ^1.1.0
   shared_preferences: ^2.2.2
   package_info_plus: ^8.0.0
-  # NOVAS DEPENDÊNCIAS PARA UPDATE AUTOMÁTICO
-  dio: ^5.4.0  # Para download com progress
-  path_provider: ^2.1.1  # Para acessar diretórios
-  permission_handler: ^11.1.0  # Para gerenciar permissões
-  install_plugin: ^2.1.0  # Para instalar APK automaticamente
+  dio: ^5.4.0
+  path_provider: ^2.1.1
+  permission_handler: ^11.1.0
+  app_links: ^6.3.2
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.4
+  file_picker: ^8.1.7
 
 dev_dependencies:
   flutter_test:

@@ -55,7 +55,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    _loadWorkspaces();
+    _startAutoRefresh();
 
     // VERIFICAÇÃO AUTOMÁTICA DE ATUALIZAÇÕES
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -178,8 +178,6 @@ class _HomeShellState extends State<HomeShell> {
             print('[HOME_SHELL] Estado atualizado - Nome: $_activeWorkspaceName, Owner: $_workspaceOwnerName, ID: $_activeWorkspaceId');
           }
         }
-      } else {
-        print('[HOME_SHELL] Erro HTTP: ${response.statusCode}');
       }
     } catch (e) {
       print('Error loading active workspace name: $e');
@@ -660,7 +658,7 @@ class _SettingsPageState extends State<_SettingsPage> {
 
   Future<void> _triggerAppUpdate() async {
     try {
-      await AppUpdate.triggerUpdate(context);
+      await AppUpdater.checkForUpdatesManually(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
