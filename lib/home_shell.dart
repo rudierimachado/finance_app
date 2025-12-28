@@ -40,6 +40,7 @@ class _HomeShellState extends State<HomeShell> {
   String _activeWorkspaceName = 'Workspace';
   String? _workspaceOwnerName;
   int _lastWorkspaceId = 0;
+  String? _appVersion;
 
   void _applyWorkspaceChange(int? workspaceId) {
     if (workspaceId != null) {
@@ -72,6 +73,19 @@ class _HomeShellState extends State<HomeShell> {
       _lastWorkspaceId = _activeWorkspaceId!;
     }
     _loadActiveWorkspaceName();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersion = '${info.version}.${info.buildNumber}';
+      });
+    } catch (_) {
+      // silencioso
+    }
   }
 
   @override
@@ -193,6 +207,20 @@ class _HomeShellState extends State<HomeShell> {
         backgroundColor: const Color(0xFF0F2027),
         elevation: 0,
         actions: [
+          if (_appVersion != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  'v$_appVersion',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white70),
             onPressed: () => setState(() => _index = 4),
@@ -605,7 +633,7 @@ class _SettingsPageState extends State<_SettingsPage> {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
       setState(() {
-        _appVersion = info.version;
+        _appVersion = '${info.version}.${info.buildNumber}';
       });
     } catch (_) {
       // silencioso

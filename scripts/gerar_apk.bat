@@ -38,6 +38,14 @@ echo Versao gerada automaticamente: !VERSION!
 set "APP_VERSION=!VERSION!"
 echo Versao gravada em %VERSION_FILE%
 
+:: Atualizar pubspec.yaml para que o APK tenha a mesma versao (0.0.0.<build>)
+:: Flutter usa "version: x.y.z+build". Vamos fixar x.y.z = 0.0.0 e build = ultimo digito.
+set "PUBSPEC_FILE=%PROJECT_DIR%\pubspec.yaml"
+if exist "%PUBSPEC_FILE%" (
+  echo Atualizando pubspec.yaml para version: 0.0.0+!BUILD! ...
+  powershell -NoProfile -Command "(Get-Content -LiteralPath '%PUBSPEC_FILE%') -replace '^version:.*$', 'version: 0.0.0+!BUILD!' | Set-Content -LiteralPath '%PUBSPEC_FILE%' -Encoding UTF8"
+)
+
 :: Usar um PUB_CACHE local (evita quebrar por cache global corrompido)
 set "PUB_CACHE=%PROJECT_DIR%\.pub-cache"
 if not exist "%PUB_CACHE%" (

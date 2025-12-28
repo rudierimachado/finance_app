@@ -57,14 +57,37 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   Future<void> _loadAppVersion() async {
     try {
+      // Tenta pegar versão do servidor (usa o version.txt backend)
+      final server = await _fetchServerVersion();
+      if (!mounted) return;
+      if (server != null && server.isNotEmpty) {
+        setState(() => _appVersion = server);
+        return;
+      }
+
+      // Fallback: versão do APK instalado
       final packageInfo = await PackageInfo.fromPlatform();
       if (!mounted) return;
       setState(() {
-        _appVersion = packageInfo.version;
+        _appVersion = '${packageInfo.version}.${packageInfo.buildNumber}';
       });
     } catch (_) {
       // ignora falha silenciosamente
     }
+  }
+
+  Future<String?> _fetchServerVersion() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/app-version'),
+      ).timeout(const Duration(seconds: 5));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final v = data['version']?.toString();
+        return v;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _checkBiometric() async {

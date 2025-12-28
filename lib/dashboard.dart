@@ -46,10 +46,13 @@ class _DashboardPageState extends State<DashboardPage> {
         _future = _fetchDashboard();
       });
     };
+    // Ouvir refresh global (ex: após salvar/editar transação)
+    financeRefreshTick.addListener(_refreshListener);
   }
 
   @override
   void dispose() {
+    financeRefreshTick.removeListener(_refreshListener);
     super.dispose();
   }
 
@@ -126,13 +129,16 @@ class _DashboardPageState extends State<DashboardPage> {
       final monthIncome = (data['month_income'] as num? ?? 0).toDouble();
       final monthExpense = (data['month_expense'] as num? ?? 0).toDouble();
       final creditCardExpense = (data['credit_card_expense_month'] as num? ?? 0).toDouble();
+
       final creditCardTopName = data['credit_card_top_name']?.toString();
       final creditCardTopAmount = (data['credit_card_top_amount'] as num? ?? 0).toDouble();
       final pendingBillsCount = (data['pending_bills_count'] as num? ?? 0).toInt();
       final overdueBillsCount = (data['overdue_bills_count'] as num? ?? 0).toInt();
       
-      // Cálculos dos cards principais
-      final dinheiroEmCaixa = monthIncomePaid - monthExpensePaid;
+      // Saldos vindos do backend (ajuste: disponível = saldo acumulado)
+      final openingBalance = (data['opening_balance'] as num? ?? 0).toDouble();
+      final availableBalance = (data['available_balance'] as num? ?? 0).toDouble();
+      final dinheiroEmCaixa = availableBalance; // saldo acumulado: anterior + mês pago
       final contasAPagar = monthExpensePending;
       final situacaoFinal = dinheiroEmCaixa - contasAPagar;
 

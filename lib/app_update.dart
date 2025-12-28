@@ -63,7 +63,7 @@ class AppUpdater {
         ),
       );
       final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version;
+      final currentVersion = '${packageInfo.version}.${packageInfo.buildNumber}';
       
       final response = await dio.get(
         '$apiBaseUrl/gerenciamento-financeiro/api/app-version',

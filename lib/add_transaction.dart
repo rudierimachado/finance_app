@@ -959,6 +959,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             backgroundColor: Color(0xFF10B981),
           ),
         );
+        // Dispara refresh global (dashboard/listas)
+        financeRefreshTick.value = financeRefreshTick.value + 1;
         Navigator.of(context).pop(true);
         return;
       }
