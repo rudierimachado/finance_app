@@ -125,8 +125,14 @@ class AppUpdater {
   static Future<bool> _requestPermissions() async {
     try {
       if (Platform.isAndroid) {
-        final storagePermission = await Permission.storage.request();
-        return storagePermission.isGranted || storagePermission.isPermanentlyDenied;
+        // Permissão para instalar APKs de fontes desconhecidas
+        final installStatus = await Permission.requestInstallPackages.request();
+        if (installStatus.isGranted) return true;
+
+        if (installStatus.isPermanentlyDenied) {
+          await openAppSettings();
+        }
+        return false;
       }
       return true;
     } catch (e) {
@@ -143,14 +149,14 @@ class AppUpdater {
           sendTimeout: const Duration(minutes: 5),
         ),
       );
-      Directory directory;
-      if (Platform.isAndroid) {
-        directory = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
-      } else {
-        directory = await getApplicationDocumentsDirectory();
+      Directory directory = await getApplicationDocumentsDirectory();
+      final updatesDir = Directory('${directory.path}/updates');
+      if (!await updatesDir.exists()) {
+        await updatesDir.create(recursive: true);
       }
 
-      final savePath = '${directory.path}/finance_app_update.apk';
+      final savePath = '${updatesDir.path}/finance_app_update.apk';
+
       final file = File(savePath);
       if (await file.exists()) await file.delete();
       
