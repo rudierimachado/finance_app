@@ -327,7 +327,6 @@ class ShareDialog extends StatefulWidget {
 class _ShareDialogState extends State<ShareDialog> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
-  String _role = 'viewer';
   bool _isLoading = false;
   bool _loadingWorkspace = true;
   String? _workspaceName;
@@ -404,7 +403,7 @@ class _ShareDialogState extends State<ShareDialog> {
     setState(() => _isLoading = true);
 
     final email = _emailController.text.trim();
-    final role = _role;
+    const role = 'editor'; // compartilhamento sempre com acesso total
 
     final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/workspace/invite');
     if (kDebugMode) {
@@ -524,27 +523,6 @@ class _ShareDialogState extends State<ShareDialog> {
                 if (!v.contains('@')) return 'Email inválido';
                 return null;
               },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _role,
-              items: const [
-                DropdownMenuItem(value: 'viewer', child: Text('Viewer')),
-                DropdownMenuItem(value: 'editor', child: Text('Editor')),
-              ],
-              onChanged: (val) => setState(() => _role = val ?? 'viewer'),
-              decoration: InputDecoration(
-                labelText: 'Permissão',
-                labelStyle: const TextStyle(color: Colors.white70),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.08),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              dropdownColor: const Color(0xFF2C5364),
-              style: const TextStyle(color: Colors.white),
             ),
           ],
         ),

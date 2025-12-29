@@ -13,9 +13,6 @@ class WorkspaceOnboardingScreen extends StatefulWidget {
 }
 
 class _WorkspaceOnboardingScreenState extends State<WorkspaceOnboardingScreen> {
-  bool shareTransactions = false;
-  bool shareCategories = true;
-  bool shareFiles = false;
   bool loading = false;
 
   late int workspaceId;
@@ -54,11 +51,12 @@ class _WorkspaceOnboardingScreenState extends State<WorkspaceOnboardingScreen> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           if (userId > 0) 'user_id': userId,
+          // Compartilhamento sempre total; não envia toggles
           'share_preferences': {
-            'share_transactions': shareTransactions,
-            'share_categories': shareCategories,
-            'share_files': shareFiles,
-          }
+            'share_transactions': true,
+            'share_categories': true,
+            'share_files': true,
+          },
         }),
       );
 
@@ -99,26 +97,12 @@ class _WorkspaceOnboardingScreenState extends State<WorkspaceOnboardingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Configurar compartilhamento',
+            Text('Compartilhar workspace',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
-            _buildToggle(
-              title: 'Compartilhar transações',
-              subtitle: 'Permite que membros vejam lançamentos.',
-              value: shareTransactions,
-              onChanged: (v) => setState(() => shareTransactions = v),
-            ),
-            _buildToggle(
-              title: 'Compartilhar categorias',
-              subtitle: 'Usar categorias comuns do workspace.',
-              value: shareCategories,
-              onChanged: (v) => setState(() => shareCategories = v),
-            ),
-            _buildToggle(
-              title: 'Compartilhar anexos',
-              subtitle: 'Permite anexos visíveis aos membros.',
-              value: shareFiles,
-              onChanged: (v) => setState(() => shareFiles = v),
+            const Text(
+              'Ao concluir, todos os membros terão acesso total às transações, categorias e anexos deste workspace.',
+              style: TextStyle(fontSize: 14),
             ),
             const Spacer(),
             SizedBox(
@@ -140,19 +124,5 @@ class _WorkspaceOnboardingScreenState extends State<WorkspaceOnboardingScreen> {
     );
   }
 
-  Widget _buildToggle({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: Switch(value: value, onChanged: onChanged),
-      ),
-    );
-  }
+  // Toggles removidos: compartilhamento agora é sempre total
 }

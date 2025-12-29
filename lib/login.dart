@@ -95,8 +95,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
       final canCheck = await _localAuth.canCheckBiometrics;
       final isDeviceSupported = await _localAuth.isDeviceSupported();
+      final available = await _localAuth.getAvailableBiometrics();
+      final hasEnrollment = available.isNotEmpty;
       setState(() {
-        _biometricAvailable = canCheck && isDeviceSupported;
+        _biometricAvailable = canCheck && isDeviceSupported && hasEnrollment;
         _biometricEnabled = enabledRaw == 'true';
       });
 
@@ -132,9 +134,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         return;
       }
       
-      if (!_biometricAvailable) {
+      final available = await _localAuth.getAvailableBiometrics();
+      final hasEnrollment = available.isNotEmpty;
+      if (!_biometricAvailable || !hasEnrollment) {
         if (kDebugMode) {
-          print('[BIOMETRIC] Biometria não disponível no dispositivo, abortando');
+          print('[BIOMETRIC] Biometria não disponível/enrolada no dispositivo, abortando');
         }
         return;
       }
