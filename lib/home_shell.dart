@@ -258,6 +258,14 @@ class _HomeShellState extends State<HomeShell> {
         backgroundColor: const Color(0xFF0F2027),
         elevation: 0,
         actions: [
+          if (_index == 1)
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white70),
+              onPressed: () {
+                financeAiClearNotifier.value = financeAiClearNotifier.value + 1;
+              },
+              tooltip: 'Novo Chat',
+            ),
           if (_appVersion != null)
             Center(
               child: Padding(
@@ -279,25 +287,27 @@ class _HomeShellState extends State<HomeShell> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'main_fab',
-        onPressed: () async {
-          final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => AddTransactionPage(
-                userId: widget.userId,
-                workspaceId: _activeWorkspaceId,
-              ),
+      floatingActionButton: _index == 1
+          ? null
+          : FloatingActionButton(
+              heroTag: 'main_fab',
+              onPressed: () async {
+                final changed = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => AddTransactionPage(
+                      userId: widget.userId,
+                      workspaceId: _activeWorkspaceId,
+                    ),
+                  ),
+                );
+                if (changed == true) {
+                  financeRefreshTick.value = financeRefreshTick.value + 1;
+                }
+              },
+              backgroundColor: const Color(0xFF00C9A7),
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.add),
             ),
-          );
-          if (changed == true) {
-            financeRefreshTick.value = financeRefreshTick.value + 1;
-          }
-        },
-        backgroundColor: const Color(0xFF00C9A7),
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-      ),
       body: IndexedStack(
         index: _index,
         children: [
