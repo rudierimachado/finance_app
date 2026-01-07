@@ -213,13 +213,19 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
       ));
     }
 
+    final double totalIncome = items.where((t) => t.type == 'income').fold(0.0, (sum, t) => sum + t.amount);
+    final double totalExpense = items.where((t) => t.type == 'expense').fold(0.0, (sum, t) => sum + t.amount);
+    final double paidIncome = items.where((t) => t.type == 'income' && t.isPaid).fold(0.0, (sum, t) => sum + t.amount);
+    final double paidExpense = items.where((t) => t.type == 'expense' && t.isPaid).fold(0.0, (sum, t) => sum + t.amount);
+
     return _TransactionsData(
       transactions: items,
       categories: categories.toList()..sort(),
-      totalIncome: items.where((t) => t.type == 'income').fold(0.0, (sum, t) => sum + t.amount),
-      totalExpense: items.where((t) => t.type == 'expense').fold(0.0, (sum, t) => sum + t.amount),
-      paidIncome: items.where((t) => t.type == 'income' && t.isPaid).fold(0.0, (sum, t) => sum + t.amount),
-      paidExpense: items.where((t) => t.type == 'expense' && t.isPaid).fold(0.0, (sum, t) => sum + t.amount),
+      totalIncome: totalIncome,
+      totalExpense: totalExpense,
+      paidIncome: paidIncome,
+      paidExpense: paidExpense,
+      prevBalance: (data['prev_balance'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -622,30 +628,37 @@ class _ModernHeader extends StatelessWidget {
           
           // Navegação de mês
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white.withOpacity(0.10)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
                   onPressed: onPrevMonth,
-                  icon: const Icon(Icons.chevron_left, color: Colors.white),
+                  icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  padding: EdgeInsets.zero,
                 ),
-                Text(
-                  '${monthNames[month]} $year',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    '${monthNames[month]} $year',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 IconButton(
                   onPressed: onNextMonth,
-                  icon: const Icon(Icons.chevron_right, color: Colors.white),
+                  icon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  padding: EdgeInsets.zero,
                 ),
               ],
             ),
@@ -897,65 +910,76 @@ class _SummaryCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final balance = data.paidIncome - data.paidExpense;
-    final balanceColor = balance >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final pendingExpense = data.totalExpense - data.paidExpense;
+    
+    final monthBalance = data.totalIncome - data.totalExpense;
+    final monthBalanceColor = monthBalance >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    
+    final totalBalance = data.prevBalance + monthBalance;
+    final totalBalanceColor = totalBalance >= 0 ? const Color(0xFF00C9A7) : const Color(0xFFEF4444);
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _SummaryCard(
-            title: 'Receitas',
-            total: data.totalIncome,
-            paid: data.paidIncome,
-            color: const Color(0xFF10B981),
-            icon: Icons.trending_up,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _SummaryCard(
-            title: 'Despesas',
-            total: data.totalExpense,
-            paid: data.paidExpense,
-            color: const Color(0xFFEF4444),
-            icon: Icons.trending_down,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: balanceColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: balanceColor.withOpacity(0.3)),
+        Row(
+          children: [
+            Expanded(
+              child: _SummaryCard(
+                title: 'Saldo Total',
+                amount: totalBalance,
+                subtitle: 'Geral Acumulado',
+                color: totalBalanceColor,
+                icon: Icons.account_balance,
+              ),
             ),
-            child: Column(
-              children: [
-                Icon(
-                  balance >= 0 ? Icons.account_balance_wallet : Icons.warning,
-                  color: balanceColor,
-                  size: 20,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Saldo',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 10,
-                  ),
-                ),
-                Text(
-                  'R\$ ${balance.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: balanceColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _SummaryCard(
+                title: 'A Pagar',
+                amount: pendingExpense,
+                subtitle: 'Pendente',
+                color: const Color(0xFFEF4444),
+                icon: Icons.money_off,
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SummaryCard(
+                title: 'Já Pago',
+                amount: data.paidExpense,
+                subtitle: 'Despesas',
+                color: Colors.orange,
+                icon: Icons.check_circle_outline,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _SummaryCard(
+                title: 'Recebido',
+                amount: data.paidIncome,
+                subtitle: 'Receitas',
+                color: const Color(0xFF10B981),
+                icon: Icons.trending_up,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SummaryCard(
+                title: 'Saldo do Mês',
+                amount: monthBalance,
+                subtitle: 'Neste Período',
+                color: monthBalanceColor,
+                icon: Icons.account_balance_wallet,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -964,15 +988,15 @@ class _SummaryCards extends StatelessWidget {
 
 class _SummaryCard extends StatelessWidget {
   final String title;
-  final double total;
-  final double paid;
+  final double amount;
+  final String subtitle;
   final Color color;
   final IconData icon;
 
   const _SummaryCard({
     required this.title,
-    required this.total,
-    required this.paid,
+    required this.amount,
+    required this.subtitle,
     required this.color,
     required this.icon,
   });
@@ -993,19 +1017,22 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Icon(icon, color: color, size: 16),
               const SizedBox(width: 4),
-              Text(
-                title,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            'R\$ ${total.toStringAsFixed(2)}',
+            'R\$ ${amount.toStringAsFixed(2)}',
             style: TextStyle(
               color: color,
               fontSize: 14,
@@ -1013,7 +1040,7 @@ class _SummaryCard extends StatelessWidget {
             ),
           ),
           Text(
-            'Pago: R\$ ${paid.toStringAsFixed(2)}',
+            subtitle,
             style: TextStyle(
               color: Colors.white.withOpacity(0.5),
               fontSize: 9,
@@ -1083,150 +1110,117 @@ class _ModernTransactionCard extends StatelessWidget {
         : '';
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Container(
-              width: 44,
-              height: 44,
+      child: InkWell(
+        onTap: onEdit,
+        child: Row(
+          children: [
+            // Ícone pequeno
+            Container(
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
-                color: amountColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
+                color: amountColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(icon, color: amountColor, size: 20),
+              child: Icon(icon, color: amountColor, size: 14),
             ),
-            title: Text(
-              item.description,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (item.categoryName != null) ...[
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: item.categoryColor ?? Colors.grey,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        item.categoryName!,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                if (dateLabel.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+            const SizedBox(width: 8),
+            
+            // Descrição e Info (Categoria/Data)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    dateLabel,
+                    item.description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    '${item.categoryName ?? "Geral"} • $dateLabel',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 11,
+                      color: Colors.white.withOpacity(0.4),
+                      fontSize: 9,
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-            trailing: Column(
+
+            // Ações: Anexo e Editar
+            IconButton(
+              onPressed: onViewAttachments,
+              icon: const Icon(Icons.attach_file, size: 12),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              color: Colors.white.withOpacity(0.3),
+            ),
+            const SizedBox(width: 10),
+            IconButton(
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit, size: 12),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              color: const Color(0xFF00C9A7).withOpacity(0.5),
+            ),
+            const SizedBox(width: 10),
+
+            // Switch de Pago (apenas para despesas)
+            if (!isIncome)
+              SizedBox(
+                height: 20,
+                width: 30,
+                child: Transform.scale(
+                  scale: 0.6,
+                  child: Switch(
+                    value: item.isPaid,
+                    onChanged: onTogglePaid,
+                    activeColor: const Color(0xFF10B981),
+                  ),
+                ),
+              ),
+            
+            const SizedBox(width: 8),
+
+            // Valor e Status
+            Column(
               crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   '$sign R\$ ${item.amount.toStringAsFixed(2)}',
                   style: TextStyle(
                     color: amountColor,
                     fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: item.isPaid 
-                        ? const Color(0xFF10B981).withOpacity(0.2)
-                        : Colors.orange.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    item.isPaid ? 'Pago' : 'Pendente',
-                    style: TextStyle(
-                      color: item.isPaid ? const Color(0xFF10B981) : Colors.orange,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
+                Text(
+                  item.isPaid ? 'PAGO' : 'PENDENTE',
+                  style: TextStyle(
+                    color: item.isPaid ? const Color(0xFF10B981) : Colors.orange,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ],
             ),
-            onTap: onEdit,
-          ),
-          
-          // Ações
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                if (!isIncome) // Switch só para despesas
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Switch(
-                          value: item.isPaid,
-                          onChanged: onTogglePaid,
-                          activeColor: const Color(0xFF10B981),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          item.isPaid ? 'Pago' : 'Marcar como pago',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (isIncome) const Spacer(),
-                
-                // Botões de ação
-                IconButton(
-                  onPressed: onViewAttachments,
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  color: Colors.white.withOpacity(0.6),
-                  tooltip: 'Anexos',
-                ),
-                IconButton(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit, size: 18),
-                  color: const Color(0xFF00C9A7),
-                  tooltip: 'Editar',
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1331,6 +1325,7 @@ class _TransactionsData {
   final double totalExpense;
   final double paidIncome;
   final double paidExpense;
+  final double prevBalance;
 
   const _TransactionsData({
     required this.transactions,
@@ -1339,6 +1334,7 @@ class _TransactionsData {
     required this.totalExpense,
     required this.paidIncome,
     required this.paidExpense,
+    required this.prevBalance,
   });
 }
 

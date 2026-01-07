@@ -12,9 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'add_transaction.dart';
 import 'app_update.dart';
 import 'config.dart';
-import 'dashboard.dart';
 import 'finance_ai_page.dart';
-import 'planning_page.dart';
 import 'transactions_page.dart';
 import 'workspace_selector.dart';
 
@@ -45,7 +43,7 @@ class _HomeShellState extends State<HomeShell> {
   void _applyWorkspaceChange(int? workspaceId) {
     if (workspaceId != null) {
       setState(() {
-        _index = 0; // sempre leva para dashboard ao trocar workspace
+        _index = 0; // Transações
         _activeWorkspaceId = workspaceId;
         _lastWorkspaceId = workspaceId;
       });
@@ -223,7 +221,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white70),
-            onPressed: () => setState(() => _index = 4),
+            onPressed: () => setState(() => _index = 2),
             tooltip: 'Ajustes',
           ),
         ],
@@ -250,9 +248,7 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          DashboardPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           TransactionsPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
-          PlanningPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           FinanceAiPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           _SettingsPlaceholderPage(
             userId: widget.userId,
@@ -277,19 +273,9 @@ class _HomeShellState extends State<HomeShell> {
           type: BottomNavigationBarType.fixed,
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
-            ),
-            BottomNavigationBarItem(
               icon: Icon(Icons.list_alt_outlined),
               activeIcon: Icon(Icons.list_alt),
               label: 'Transações',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.insights_outlined),
-              activeIcon: Icon(Icons.insights),
-              label: 'Planejamento',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.auto_awesome_outlined),
@@ -622,11 +608,13 @@ class _SettingsPageState extends State<_SettingsPage> {
     try {
       final canCheck = await _localAuth.canCheckBiometrics;
       final isDeviceSupported = await _localAuth.isDeviceSupported();
+      final available = await _localAuth.getAvailableBiometrics();
+      final hasEnrollment = available.isNotEmpty;
       final enabledRaw = await _storage.read(key: 'biometric_enabled');
 
       if (!mounted) return;
       setState(() {
-        _biometricAvailable = canCheck && isDeviceSupported;
+        _biometricAvailable = canCheck && isDeviceSupported && hasEnrollment;
         _biometricEnabled = enabledRaw == 'true';
         _loading = false;
       });
@@ -663,10 +651,12 @@ class _SettingsPageState extends State<_SettingsPage> {
     });
 
     if (value) {
-      if (!_biometricAvailable) {
+      final available = await _localAuth.getAvailableBiometrics();
+      final hasEnrollment = available.isNotEmpty;
+      if (!_biometricAvailable || !hasEnrollment) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Biometria indisponível neste dispositivo.')),
+          const SnackBar(content: Text('Biometria indisponível ou não configurada neste dispositivo. Configure Face ID/Impressão primeiro.')),
         );
         setState(() {
           _biometricEnabled = previousValue;
@@ -701,6 +691,7 @@ class _SettingsPageState extends State<_SettingsPage> {
           options: const AuthenticationOptions(
             biometricOnly: true,
             stickyAuth: true,
+            useErrorDialogs: true,
           ),
         );
         
