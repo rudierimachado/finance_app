@@ -26,12 +26,13 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
   late int _year;
   late int _month;
   String _typeFilter = 'all';
-  String _statusFilter = 'all'; // all, paid, pending
+  String _statusFilter = 'all';
   String _categoryFilter = 'all';
   final _queryController = TextEditingController();
 
   bool _filtersExpanded = false;
   late AnimationController _animationController;
+  late AnimationController _staggerController;
   late Animation<double> _fadeAnimation;
 
   late final VoidCallback _refreshListener;
@@ -50,6 +51,10 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
 
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _staggerController = AnimationController(
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -83,6 +88,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
   @override
   void dispose() {
     _animationController.dispose();
+    _staggerController.dispose();
     financeRefreshTick.removeListener(_refreshListener);
     _queryController.dispose();
     super.dispose();
@@ -246,14 +252,12 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
   List<_TxItem> _applyLocalFilters(List<_TxItem> items) {
     var filtered = List<_TxItem>.from(items);
 
-    // Filtro por status de pagamento
     if (_statusFilter == 'paid') {
       filtered = filtered.where((item) => item.isPaid).toList();
     } else if (_statusFilter == 'pending') {
       filtered = filtered.where((item) => !item.isPaid).toList();
     }
 
-    // Filtro por categoria
     if (_categoryFilter != 'all') {
       filtered = filtered.where((item) => item.categoryName == _categoryFilter).toList();
     }
@@ -298,7 +302,6 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
       return;
     }
 
-    // Update otimista: atualizar UI imediatamente
     final itemIndex = _currentItems.indexWhere((item) => item.id == transactionId);
     if (itemIndex != -1) {
       setState(() {
@@ -363,7 +366,6 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
     } catch (e) {
       if (!mounted) return;
 
-      // Reverter mudança otimista em caso de erro
       if (itemIndex != -1) {
         setState(() {
           _currentItems[itemIndex] = _TxItem(
@@ -391,167 +393,122 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    // Aguardar workspace_id estar definido
     if (widget.workspaceId == null) {
       return Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF0F2027),
-                Color(0xFF203A43),
-                Color(0xFF2C5364),
-              ],
-            ),
-          ),
-          child: const Center(
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C9A7)),
-            ),
+        backgroundColor: const Color(0xFFF8F9FA),
+        body: const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF6366F1),
           ),
         ),
       );
     }
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header moderno
-              _ModernHeader(
-                year: _year,
-                month: _month,
-                onPrevMonth: _prevMonth,
-                onNextMonth: _nextMonth,
-                onToggleFilters: _toggleFilters,
-                filtersExpanded: _filtersExpanded,
-                hasFilters: _typeFilter != 'all' || _statusFilter != 'all' || 
-                           _categoryFilter != 'all' || _queryController.text.isNotEmpty,
-              ),
+      backgroundColor: const Color(0xFFF8F9FA),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header Compacto
+            _CompactHeader(
+              year: _year,
+              month: _month,
+              onPrevMonth: _prevMonth,
+              onNextMonth: _nextMonth,
+              onToggleFilters: _toggleFilters,
+              filtersExpanded: _filtersExpanded,
+              hasFilters: _typeFilter != 'all' || _statusFilter != 'all' || 
+                         _categoryFilter != 'all' || _queryController.text.isNotEmpty,
+            ),
 
-              // Filtros expansíveis com animação
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                height: _filtersExpanded ? null : 0,
-                child: _filtersExpanded 
-                    ? FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: _ModernFiltersSection(
-                          typeFilter: _typeFilter,
-                          statusFilter: _statusFilter,
-                          categoryFilter: _categoryFilter,
-                          queryController: _queryController,
-                          availableCategories: _availableCategories,
-                          onTypeChanged: (value) {
-                            setState(() {
-                              _typeFilter = value;
-                            });
-                          },
-                          onStatusChanged: (value) {
-                            setState(() {
-                              _statusFilter = value;
-                            });
-                          },
-                          onCategoryChanged: (value) {
-                            setState(() {
-                              _categoryFilter = value;
-                            });
-                          },
-                          onApply: _applyFilters,
-                          onClear: _clearFilters,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
+            // Filtros
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              height: _filtersExpanded ? null : 0,
+              child: _filtersExpanded 
+                  ? FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: _CompactFiltersSection(
+                        typeFilter: _typeFilter,
+                        statusFilter: _statusFilter,
+                        categoryFilter: _categoryFilter,
+                        queryController: _queryController,
+                        availableCategories: _availableCategories,
+                        onTypeChanged: (value) => setState(() => _typeFilter = value),
+                        onStatusChanged: (value) => setState(() => _statusFilter = value),
+                        onCategoryChanged: (value) => setState(() => _categoryFilter = value),
+                        onApply: _applyFilters,
+                        onClear: _clearFilters,
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
 
-              // Conteúdo principal
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: FutureBuilder<_TransactionsData>(
-                    future: _future,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C9A7)),
-                          ),
-                        );
-                      }
-                      
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: _ErrorWidget(
-                            message: 'Erro ao carregar transações',
-                            onRetry: () {
-                              setState(() {
-                                _future = _fetch();
-                              });
-                            },
-                          ),
-                        );
-                      }
-
-                      final data = snapshot.data!;
-                      _currentItems = data.transactions;
-                      _availableCategories = data.categories;
-
-                      // Aplicar filtros locais
-                      final filteredItems = _applyLocalFilters(_currentItems);
-
-                      return Column(
-                        children: [
-                          // Cards de resumo
-                          _SummaryCards(data: data),
-                          const SizedBox(height: 16),
-
-                          // Lista de transações
-                          Expanded(
-                            child: filteredItems.isEmpty
-                                ? _EmptyState(
-                                    hasFilters: _typeFilter != 'all' || 
-                                               _statusFilter != 'all' || 
-                                               _categoryFilter != 'all' || 
-                                               _queryController.text.isNotEmpty,
-                                    onClearFilters: _clearFilters,
-                                  )
-                                : _ModernTransactionsList(
-                                    items: filteredItems,
-                                    onEdit: _editTransaction,
-                                    onViewAttachments: _viewAttachments,
-                                    onTogglePaid: _setPaid,
-                                  ),
-                          ),
-                        ],
+            // Conteúdo principal
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: FutureBuilder<_TransactionsData>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const _CleanLoader();
+                    }
+                    
+                    if (snapshot.hasError) {
+                      return _ErrorWidget(
+                        message: 'Erro ao carregar transações',
+                        onRetry: () => setState(() => _future = _fetch()),
                       );
-                    },
-                  ),
+                    }
+
+                    final data = snapshot.data!;
+                    _currentItems = data.transactions;
+                    _availableCategories = data.categories;
+
+                    final filteredItems = _applyLocalFilters(_currentItems);
+
+                    _staggerController.forward();
+
+                    return Column(
+                      children: [
+                        // Barra horizontal compacta com nomes corretos
+                        _CompactSummaryBar(data: data),
+                        const SizedBox(height: 16),
+
+                        // TODA A TELA para as transações
+                        Expanded(
+                          child: filteredItems.isEmpty
+                              ? _CleanEmptyState(
+                                  hasFilters: _typeFilter != 'all' || 
+                                             _statusFilter != 'all' || 
+                                             _categoryFilter != 'all' || 
+                                             _queryController.text.isNotEmpty,
+                                  onClearFilters: _clearFilters,
+                                )
+                              : _FocusedTransactionsList(
+                                  items: filteredItems,
+                                  onEdit: _editTransaction,
+                                  onViewAttachments: _viewAttachments,
+                                  onTogglePaid: _setPaid,
+                                  controller: _staggerController,
+                                ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// Header moderno com navegação de mês
-class _ModernHeader extends StatelessWidget {
+// Header compacto
+class _CompactHeader extends StatelessWidget {
   final int year;
   final int month;
   final VoidCallback onPrevMonth;
@@ -560,7 +517,7 @@ class _ModernHeader extends StatelessWidget {
   final bool filtersExpanded;
   final bool hasFilters;
 
-  const _ModernHeader({
+  const _CompactHeader({
     required this.year,
     required this.month,
     required this.onPrevMonth,
@@ -578,87 +535,335 @@ class _ModernHeader extends StatelessWidget {
     ];
 
     return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Título e botão de filtros
-          Row(
-            children: [
-              const Text(
-                'Transações',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              Stack(
-                children: [
-                  IconButton(
-                    onPressed: onToggleFilters,
-                    icon: AnimatedRotation(
-                      turns: filtersExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Icon(
-                        filtersExpanded ? Icons.filter_list_off : Icons.filter_list,
-                        color: hasFilters ? const Color(0xFF00C9A7) : Colors.white70,
-                      ),
-                    ),
-                  ),
-                  if (hasFilters)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF00C9A7),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          
-          const SizedBox(height: 16),
-          
-          // Navegação de mês
+        ],
+      ),
+      child: Row(
+        children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              ),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
+                _CompactMonthButton(
+                  icon: Icons.chevron_left,
                   onPressed: onPrevMonth,
-                  icon: const Icon(Icons.chevron_left, color: Colors.white, size: 20),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  padding: EdgeInsets.zero,
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    '${monthNames[month]} $year',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
+                const SizedBox(width: 12),
+                Text(
+                  '${monthNames[month]} $year',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                IconButton(
+                const SizedBox(width: 12),
+                _CompactMonthButton(
+                  icon: Icons.chevron_right,
                   onPressed: onNextMonth,
-                  icon: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  padding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          _CompactFilterButton(
+            onPressed: onToggleFilters,
+            isExpanded: filtersExpanded,
+            hasFilters: hasFilters,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactMonthButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _CompactMonthButton({
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(
+          icon,
+          color: Colors.white,
+          size: 16,
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactFilterButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final bool isExpanded;
+  final bool hasFilters;
+
+  const _CompactFilterButton({
+    required this.onPressed,
+    required this.isExpanded,
+    required this.hasFilters,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: hasFilters ? const Color(0xFF6366F1) : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: hasFilters ? [
+            BoxShadow(
+              color: const Color(0xFF6366F1).withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ] : null,
+        ),
+        child: Stack(
+          children: [
+            Center(
+              child: AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 300),
+                child: Icon(
+                  isExpanded ? Icons.close : Icons.tune,
+                  color: hasFilters ? Colors.white : const Color(0xFF6B7280),
+                  size: 18,
+                ),
+              ),
+            ),
+            if (hasFilters && !isExpanded)
+              Positioned(
+                right: 2,
+                top: 2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Barra horizontal compacta com os nomes ORIGINAIS corretos
+class _CompactSummaryBar extends StatelessWidget {
+  final _TransactionsData data;
+
+  const _CompactSummaryBar({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final pendingExpense = data.totalExpense - data.paidExpense;
+    final monthBalance = data.totalIncome - data.totalExpense;
+    final monthBalanceColor = monthBalance >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final totalBalance = data.prevBalance + monthBalance;
+    final totalBalanceColor = totalBalance >= 0 ? const Color(0xFF00C9A7) : const Color(0xFFEF4444);
+    
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Saldo Total - DESTAQUE principal
+          Expanded(
+            flex: 2,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Saldo Total',
+                  style: TextStyle(
+                    color: const Color(0xFF6B7280),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'R\$ ${totalBalance.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: totalBalanceColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Container(
+            width: 1,
+            height: 30,
+            color: const Color(0xFFE5E7EB),
+          ),
+          
+          // A Pagar
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'A Pagar',
+                  style: TextStyle(
+                    color: const Color(0xFF6B7280),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'R\$ ${pendingExpense.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Color(0xFFEF4444),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Container(
+            width: 1,
+            height: 30,
+            color: const Color(0xFFE5E7EB),
+          ),
+          
+          // Já Pago
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Já Pago',
+                  style: TextStyle(
+                    color: const Color(0xFF6B7280),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'R\$ ${data.paidExpense.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Colors.orange,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Container(
+            width: 1,
+            height: 30,
+            color: const Color(0xFFE5E7EB),
+          ),
+          
+          // Recebido
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Recebido',
+                  style: TextStyle(
+                    color: const Color(0xFF6B7280),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'R\$ ${data.paidIncome.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Color(0xFF10B981),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Container(
+            width: 1,
+            height: 30,
+            color: const Color(0xFFE5E7EB),
+          ),
+          
+          // Saldo do Mês
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Saldo Mês',
+                  style: TextStyle(
+                    color: const Color(0xFF6B7280),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'R\$ ${monthBalance.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    color: monthBalanceColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -669,8 +874,452 @@ class _ModernHeader extends StatelessWidget {
   }
 }
 
-// Seção de filtros moderna
-class _ModernFiltersSection extends StatelessWidget {
+// Lista de transações focada
+class _FocusedTransactionsList extends StatelessWidget {
+  final List<_TxItem> items;
+  final void Function(int) onEdit;
+  final void Function(int, String) onViewAttachments;
+  final void Function(int, bool) onTogglePaid;
+  final AnimationController controller;
+
+  const _FocusedTransactionsList({
+    required this.items,
+    required this.onEdit,
+    required this.onViewAttachments,
+    required this.onTogglePaid,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        return _FocusedTransactionCard(
+          item: items[index],
+          onEdit: () => onEdit(items[index].id),
+          onViewAttachments: () => onViewAttachments(items[index].id, items[index].description),
+          onTogglePaid: (value) => onTogglePaid(items[index].id, value),
+        );
+      },
+    );
+  }
+}
+
+// Card de transação otimizado
+class _FocusedTransactionCard extends StatefulWidget {
+  final _TxItem item;
+  final VoidCallback onEdit;
+  final VoidCallback onViewAttachments;
+  final ValueChanged<bool> onTogglePaid;
+
+  const _FocusedTransactionCard({
+    required this.item,
+    required this.onEdit,
+    required this.onViewAttachments,
+    required this.onTogglePaid,
+  });
+
+  @override
+  State<_FocusedTransactionCard> createState() => _FocusedTransactionCardState();
+}
+
+class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncome = widget.item.type == 'income';
+    final amountColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final bgColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final icon = isIncome ? Icons.trending_up : Icons.trending_down;
+    final sign = isIncome ? '+' : '-';
+    
+    final dateLabel = widget.item.date != null
+        ? '${widget.item.date!.day.toString().padLeft(2, '0')}/${widget.item.date!.month.toString().padLeft(2, '0')}/${widget.item.date!.year}'
+        : 'Data não definida';
+
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) => _controller.reverse(),
+      onTapCancel: () => _controller.reverse(),
+      onTap: widget.onEdit,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: 1 - (_controller.value * 0.02),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: widget.item.isPaid 
+                      ? const Color(0xFF10B981).withOpacity(0.3)
+                      : const Color(0xFFF59E0B).withOpacity(0.3),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Linha principal - descrição e valor
+                  Row(
+                    children: [
+                      // Ícone grande e colorido
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [bgColor, bgColor.withOpacity(0.8)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: bgColor.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          icon,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                      
+                      const SizedBox(width: 16),
+                      
+                      // Descrição e categoria
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.item.description,
+                              style: const TextStyle(
+                                color: Color(0xFF1F2937),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            if (widget.item.categoryName != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: widget.item.categoryColor?.withOpacity(0.15) ?? 
+                                         const Color(0xFF6366F1).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  widget.item.categoryName!,
+                                  style: TextStyle(
+                                    color: widget.item.categoryColor ?? const Color(0xFF6366F1),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Valor GRANDE
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$sign R\$ ${widget.item.amount.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              color: amountColor,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: widget.item.isPaid 
+                                    ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                                    : [const Color(0xFFF59E0B), const Color(0xFFD97706)],
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              widget.item.isPaid ? 'PAGO' : 'PENDENTE',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Linha inferior - data e ações
+                  Row(
+                    children: [
+                      // Data e informações extras
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_month,
+                              size: 16,
+                              color: const Color(0xFF6B7280),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              dateLabel,
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (widget.item.isRecurring) ...[
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF8B5CF6).withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'RECORRENTE',
+                                  style: TextStyle(
+                                    color: Color(0xFF8B5CF6),
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      
+                      // Botões de ação maiores
+                      Row(
+                        children: [
+                          _FocusedActionButton(
+                            icon: Icons.edit_outlined,
+                            color: const Color(0xFF6366F1),
+                            onPressed: widget.onEdit,
+                          ),
+                          const SizedBox(width: 8),
+                          _FocusedActionButton(
+                            icon: Icons.attach_file_outlined,
+                            color: const Color(0xFF6B7280),
+                            onPressed: widget.onViewAttachments,
+                          ),
+                          if (!isIncome) ...[
+                            const SizedBox(width: 12),
+                            _FocusedToggleButton(
+                              value: widget.item.isPaid,
+                              onChanged: widget.onTogglePaid,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Botões de ação
+class _FocusedActionButton extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _FocusedActionButton({
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  State<_FocusedActionButton> createState() => _FocusedActionButtonState();
+}
+
+class _FocusedActionButtonState extends State<_FocusedActionButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) => _controller.reverse(),
+      onTapCancel: () => _controller.reverse(),
+      onTap: widget.onPressed,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: 1 - (_controller.value * 0.1),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: widget.color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: widget.color.withOpacity(0.3),
+                ),
+              ),
+              child: Icon(
+                widget.icon,
+                color: widget.color,
+                size: 18,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Toggle button
+class _FocusedToggleButton extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _FocusedToggleButton({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Container(
+        width: 44,
+        height: 24,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: value 
+                ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                : [const Color(0xFFE5E7EB), const Color(0xFFD1D5DB)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: (value ? const Color(0xFF10B981) : Colors.black)
+                  .withOpacity(0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 200),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 20,
+            height: 20,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: value 
+                ? const Icon(
+                    Icons.check,
+                    size: 12,
+                    color: Color(0xFF10B981),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Seção de filtros
+class _CompactFiltersSection extends StatelessWidget {
   final String typeFilter;
   final String statusFilter;
   final String categoryFilter;
@@ -682,7 +1331,7 @@ class _ModernFiltersSection extends StatelessWidget {
   final VoidCallback onApply;
   final VoidCallback onClear;
 
-  const _ModernFiltersSection({
+  const _CompactFiltersSection({
     required this.typeFilter,
     required this.statusFilter,
     required this.categoryFilter,
@@ -698,97 +1347,106 @@ class _ModernFiltersSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Busca
-          TextField(
-            controller: queryController,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Buscar por descrição...',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-              prefixIcon: const Icon(Icons.search, color: Color(0xFF00C9A7)),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.06),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+          // Campo de busca
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
+            child: TextField(
+              controller: queryController,
+              decoration: const InputDecoration(
+                hintText: 'Buscar transação...',
+                prefixIcon: Icon(Icons.search, color: Color(0xFF6366F1)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
-          // Filtros em chips
+          // Filtros
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _FilterChip(
-                label: 'Tipo',
-                value: typeFilter,
-                options: const [
+              _CompactFilterChip(
+                label: typeFilter == 'all' ? 'Tipo' : (typeFilter == 'income' ? 'Receitas' : 'Despesas'),
+                isActive: typeFilter != 'all',
+                onTap: () => _showFilterDialog(context, 'Tipo', typeFilter, [
                   ('all', 'Todos'),
                   ('income', 'Receitas'),
                   ('expense', 'Despesas'),
-                ],
-                onChanged: onTypeChanged,
+                ], onTypeChanged),
               ),
-              _FilterChip(
-                label: 'Status',
-                value: statusFilter,
-                options: const [
+              _CompactFilterChip(
+                label: statusFilter == 'all' ? 'Status' : (statusFilter == 'paid' ? 'Pagos' : 'Pendentes'),
+                isActive: statusFilter != 'all',
+                onTap: () => _showFilterDialog(context, 'Status', statusFilter, [
                   ('all', 'Todos'),
                   ('paid', 'Pagos'),
                   ('pending', 'Pendentes'),
-                ],
-                onChanged: onStatusChanged,
+                ], onStatusChanged),
               ),
               if (availableCategories.isNotEmpty)
-                _FilterChip(
-                  label: 'Categoria',
-                  value: categoryFilter,
-                  options: [
+                _CompactFilterChip(
+                  label: categoryFilter == 'all' ? 'Categoria' : categoryFilter,
+                  isActive: categoryFilter != 'all',
+                  onTap: () => _showFilterDialog(context, 'Categoria', categoryFilter, [
                     ('all', 'Todas'),
                     ...availableCategories.map((cat) => (cat, cat)),
-                  ],
-                  onChanged: onCategoryChanged,
+                  ], onCategoryChanged),
                 ),
             ],
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
-          // Botões de ação
+          // Botões
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: onApply,
-                  icon: const Icon(Icons.search),
+                  icon: const Icon(Icons.search, size: 16),
                   label: const Text('Aplicar'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00C9A7),
+                    backgroundColor: const Color(0xFF6366F1),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: onClear,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white.withOpacity(0.1),
-                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFFF3F4F6),
+                  foregroundColor: const Color(0xFF6B7280),
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 child: const Text('Limpar'),
               ),
@@ -798,440 +1456,113 @@ class _ModernFiltersSection extends StatelessWidget {
       ),
     );
   }
+
+  void _showFilterDialog(
+    BuildContext context,
+    String title,
+    String currentValue,
+    List<(String, String)> options,
+    ValueChanged<String> onChanged,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Filtrar por $title',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...options.map((option) {
+                final isSelected = option.$1 == currentValue;
+                return ListTile(
+                  title: Text(option.$2),
+                  leading: isSelected 
+                      ? const Icon(Icons.check_circle, color: Color(0xFF6366F1))
+                      : const Icon(Icons.radio_button_unchecked, color: Color(0xFFD1D5DB)),
+                  onTap: () {
+                    onChanged(option.$1);
+                    Navigator.pop(context);
+                  },
+                );
+              }).toList(),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
-// Chip de filtro personalizado
-class _FilterChip extends StatelessWidget {
+class _CompactFilterChip extends StatelessWidget {
   final String label;
-  final String value;
-  final List<(String, String)> options;
-  final ValueChanged<String> onChanged;
+  final bool isActive;
+  final VoidCallback onTap;
 
-  const _FilterChip({
+  const _CompactFilterChip({
     required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
+    required this.isActive,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        showModalBottomSheet(
-          context: context,
-          backgroundColor: const Color(0xFF203A43),
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          builder: (context) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Filtrar por $label',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ...options.map((option) {
-                    final isSelected = option.$1 == value;
-                    return ListTile(
-                      title: Text(
-                        option.$2,
-                        style: TextStyle(
-                          color: isSelected ? const Color(0xFF00C9A7) : Colors.white,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                        ),
-                      ),
-                      leading: isSelected 
-                          ? const Icon(Icons.check, color: Color(0xFF00C9A7))
-                          : null,
-                      onTap: () {
-                        onChanged(option.$1);
-                        Navigator.pop(context);
-                      },
-                    );
-                  }).toList(),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    return GestureDetector(
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: value != 'all' 
-              ? const Color(0xFF00C9A7).withOpacity(0.2)
-              : Colors.white.withOpacity(0.06),
+          gradient: isActive
+              ? const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                )
+              : null,
+          color: isActive ? null : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: value != 'all' 
-                ? const Color(0xFF00C9A7)
-                : Colors.white.withOpacity(0.2),
-          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$label: ${options.firstWhere((opt) => opt.$1 == value).$2}',
-              style: TextStyle(
-                color: value != 'all' ? const Color(0xFF00C9A7) : Colors.white70,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.arrow_drop_down,
-              color: value != 'all' ? const Color(0xFF00C9A7) : Colors.white70,
-              size: 16,
-            ),
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? Colors.white : const Color(0xFF6B7280),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
   }
 }
 
-// Cards de resumo
-class _SummaryCards extends StatelessWidget {
-  final _TransactionsData data;
-
-  const _SummaryCards({required this.data});
+// Componentes auxiliares
+class _CleanLoader extends StatelessWidget {
+  const _CleanLoader();
 
   @override
   Widget build(BuildContext context) {
-    final pendingExpense = data.totalExpense - data.paidExpense;
-    
-    final monthBalance = data.totalIncome - data.totalExpense;
-    final monthBalanceColor = monthBalance >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-    
-    final totalBalance = data.prevBalance + monthBalance;
-    final totalBalanceColor = totalBalance >= 0 ? const Color(0xFF00C9A7) : const Color(0xFFEF4444);
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _SummaryCard(
-                title: 'Saldo Total',
-                amount: totalBalance,
-                subtitle: 'Geral Acumulado',
-                color: totalBalanceColor,
-                icon: Icons.account_balance,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _SummaryCard(
-                title: 'A Pagar',
-                amount: pendingExpense,
-                subtitle: 'Pendente',
-                color: const Color(0xFFEF4444),
-                icon: Icons.money_off,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _SummaryCard(
-                title: 'Já Pago',
-                amount: data.paidExpense,
-                subtitle: 'Despesas',
-                color: Colors.orange,
-                icon: Icons.check_circle_outline,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _SummaryCard(
-                title: 'Recebido',
-                amount: data.paidIncome,
-                subtitle: 'Receitas',
-                color: const Color(0xFF10B981),
-                icon: Icons.trending_up,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _SummaryCard(
-                title: 'Saldo do Mês',
-                amount: monthBalance,
-                subtitle: 'Neste Período',
-                color: monthBalanceColor,
-                icon: Icons.account_balance_wallet,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryCard extends StatelessWidget {
-  final String title;
-  final double amount;
-  final String subtitle;
-  final Color color;
-  final IconData icon;
-
-  const _SummaryCard({
-    required this.title,
-    required this.amount,
-    required this.subtitle,
-    required this.color,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 16),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'R\$ ${amount.toStringAsFixed(2)}',
-            style: TextStyle(
-              color: color,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
-              fontSize: 9,
-            ),
-          ),
-        ],
+    return const Center(
+      child: CircularProgressIndicator(
+        color: Color(0xFF6366F1),
       ),
     );
   }
 }
 
-// Lista moderna de transações
-class _ModernTransactionsList extends StatelessWidget {
-  final List<_TxItem> items;
-  final void Function(int) onEdit;
-  final void Function(int, String) onViewAttachments;
-  final void Function(int, bool) onTogglePaid;
-
-  const _ModernTransactionsList({
-    required this.items,
-    required this.onEdit,
-    required this.onViewAttachments,
-    required this.onTogglePaid,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return _ModernTransactionCard(
-          item: item,
-          onEdit: () => onEdit(item.id),
-          onViewAttachments: () => onViewAttachments(item.id, item.description),
-          onTogglePaid: (value) => onTogglePaid(item.id, value),
-        );
-      },
-    );
-  }
-}
-
-// Card moderno de transação
-class _ModernTransactionCard extends StatelessWidget {
-  final _TxItem item;
-  final VoidCallback onEdit;
-  final VoidCallback onViewAttachments;
-  final ValueChanged<bool> onTogglePaid;
-
-  const _ModernTransactionCard({
-    required this.item,
-    required this.onEdit,
-    required this.onViewAttachments,
-    required this.onTogglePaid,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isIncome = item.type == 'income';
-    final amountColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-    final icon = isIncome ? Icons.arrow_downward : Icons.arrow_upward;
-    final sign = isIncome ? '+' : '-';
-    
-    final dateLabel = item.date != null
-        ? '${item.date!.day.toString().padLeft(2, '0')}/${item.date!.month.toString().padLeft(2, '0')}'
-        : '';
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: InkWell(
-        onTap: onEdit,
-        child: Row(
-          children: [
-            // Ícone pequeno
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: amountColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(icon, color: amountColor, size: 14),
-            ),
-            const SizedBox(width: 8),
-            
-            // Descrição e Info (Categoria/Data)
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                  Text(
-                    '${item.categoryName ?? "Geral"} • $dateLabel',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
-                      fontSize: 9,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Ações: Anexo e Editar
-            IconButton(
-              onPressed: onViewAttachments,
-              icon: const Icon(Icons.attach_file, size: 12),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              color: Colors.white.withOpacity(0.3),
-            ),
-            const SizedBox(width: 10),
-            IconButton(
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit, size: 12),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              color: const Color(0xFF00C9A7).withOpacity(0.5),
-            ),
-            const SizedBox(width: 10),
-
-            // Switch de Pago (apenas para despesas)
-            if (!isIncome)
-              SizedBox(
-                height: 20,
-                width: 30,
-                child: Transform.scale(
-                  scale: 0.6,
-                  child: Switch(
-                    value: item.isPaid,
-                    onChanged: onTogglePaid,
-                    activeColor: const Color(0xFF10B981),
-                  ),
-                ),
-              ),
-            
-            const SizedBox(width: 8),
-
-            // Valor e Status
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$sign R\$ ${item.amount.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: amountColor,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  item.isPaid ? 'PAGO' : 'PENDENTE',
-                  style: TextStyle(
-                    color: item.isPaid ? const Color(0xFF10B981) : Colors.orange,
-                    fontSize: 7,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Estado vazio
-class _EmptyState extends StatelessWidget {
+class _CleanEmptyState extends StatelessWidget {
   final bool hasFilters;
   final VoidCallback onClearFilters;
 
-  const _EmptyState({
+  const _CleanEmptyState({
     required this.hasFilters,
     required this.onClearFilters,
   });
@@ -1243,29 +1574,30 @@ class _EmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            hasFilters ? Icons.filter_list_off : Icons.receipt_long,
+            hasFilters ? Icons.search_off : Icons.receipt_long,
             size: 64,
-            color: Colors.white.withOpacity(0.3),
+            color: const Color(0xFF6366F1).withOpacity(0.5),
           ),
           const SizedBox(height: 16),
           Text(
             hasFilters 
                 ? 'Nenhuma transação encontrada'
                 : 'Nenhuma transação neste mês',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 16,
+            style: const TextStyle(
+              color: Color(0xFF374151),
+              fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
           ),
           if (hasFilters) ...[
-            const SizedBox(height: 8),
-            TextButton(
+            const SizedBox(height: 16),
+            ElevatedButton(
               onPressed: onClearFilters,
-              child: const Text(
-                'Limpar filtros',
-                style: TextStyle(color: Color(0xFF00C9A7)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
               ),
+              child: const Text('Limpar Filtros'),
             ),
           ],
         ],
@@ -1274,7 +1606,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// Widget de erro
 class _ErrorWidget extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
@@ -1286,33 +1617,20 @@ class _ErrorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          Icons.error_outline,
-          size: 64,
-          color: Colors.red.withOpacity(0.7),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          message,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
-            fontSize: 16,
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 64, color: Color(0xFFEF4444)),
+          const SizedBox(height: 16),
+          Text(message, style: const TextStyle(fontSize: 16)),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: onRetry,
+            child: const Text('Tentar Novamente'),
           ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: onRetry,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF00C9A7),
-            foregroundColor: Colors.white,
-          ),
-          child: const Text('Tentar novamente'),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
