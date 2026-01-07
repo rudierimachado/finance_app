@@ -4,4 +4,6 @@
     <external-cache-path name="external_cache" path="."/>
     <cache-path name="cache" path="."/>
     <files-path name="files" path="."/>
+    <!-- Root path como fallback de segurança -->
+    <root-path name="root" path="."/>
 </paths>

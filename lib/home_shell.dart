@@ -60,6 +60,7 @@ class _HomeShellState extends State<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         AppUpdater.checkForUpdatesAutomatically(context);
+        _checkBiometricOffer();
       }
     });
 
@@ -72,6 +73,58 @@ class _HomeShellState extends State<HomeShell> {
     }
     _loadActiveWorkspaceName();
     _loadAppVersion();
+  }
+
+  Future<void> _checkBiometricOffer() async {
+    const storage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    );
+    
+    final enabledRaw = await storage.read(key: 'biometric_enabled');
+    if (enabledRaw == 'true') return; // Já está ativado
+
+    final offerBiometric = await storage.read(key: 'offer_biometric');
+    if (offerBiometric != 'true') return; // Não foi marcado para oferecer
+
+    final localAuth = LocalAuthentication();
+    final canCheck = await localAuth.canCheckBiometrics;
+    final isDeviceSupported = await localAuth.isDeviceSupported();
+    final available = await localAuth.getAvailableBiometrics();
+    
+    if (canCheck && isDeviceSupported && available.isNotEmpty) {
+      // Biometria disponível mas não ativada
+      if (!mounted) return;
+      
+      // Limpa a flag para não oferecer toda vez que entrar no home se ele recusar agora
+      await storage.delete(key: 'offer_biometric');
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1E3C72),
+          title: const Text('Biometria', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Deseja ativar a biometria para entrar no app mais rápido na próxima vez?',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Agora não', style: TextStyle(color: Colors.white60)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                setState(() => _index = 2); // Vai para a aba de Ajustes
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00C9A7)),
+              child: const Text('Ativar nos Ajustes'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _loadAppVersion() async {

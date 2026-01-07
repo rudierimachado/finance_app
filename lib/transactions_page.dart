@@ -395,7 +395,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
   Widget build(BuildContext context) {
     if (widget.workspaceId == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: const Color(0xFF0F2027),
         body: const Center(
           child: CircularProgressIndicator(
             color: Color(0xFF6366F1),
@@ -405,7 +405,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFF0F2027),
       body: SafeArea(
         child: Column(
           children: [
@@ -472,11 +472,11 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
 
                     return Column(
                       children: [
-                        // Barra horizontal compacta com nomes corretos
+                        // Barra horizontal com cores originais corretas
                         _CompactSummaryBar(data: data),
                         const SizedBox(height: 16),
 
-                        // TODA A TELA para as transações
+                        // Lista de transações
                         Expanded(
                           child: filteredItems.isEmpty
                               ? _CleanEmptyState(
@@ -537,10 +537,10 @@ class _CompactHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF0F2027),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(0.2),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -641,7 +641,7 @@ class _CompactFilterButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: hasFilters ? const Color(0xFF6366F1) : const Color(0xFFF3F4F6),
+          color: hasFilters ? const Color(0xFF6366F1) : Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(10),
           boxShadow: hasFilters ? [
             BoxShadow(
@@ -659,7 +659,7 @@ class _CompactFilterButton extends StatelessWidget {
                 duration: const Duration(milliseconds: 300),
                 child: Icon(
                   isExpanded ? Icons.close : Icons.tune,
-                  color: hasFilters ? Colors.white : const Color(0xFF6B7280),
+                  color: hasFilters ? Colors.white : Colors.white70,
                   size: 18,
                 ),
               ),
@@ -684,7 +684,7 @@ class _CompactFilterButton extends StatelessWidget {
   }
 }
 
-// Barra horizontal compacta com os nomes ORIGINAIS corretos
+// Barra horizontal com cores ORIGINAIS corretas e layout ajustado
 class _CompactSummaryBar extends StatelessWidget {
   final _TransactionsData data;
 
@@ -699,7 +699,7 @@ class _CompactSummaryBar extends StatelessWidget {
     final totalBalanceColor = totalBalance >= 0 ? const Color(0xFF00C9A7) : const Color(0xFFEF4444);
     
     return Container(
-      height: 60,
+      height: 80, // Altura aumentada para não bugar os valores
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -723,17 +723,18 @@ class _CompactSummaryBar extends StatelessWidget {
               children: [
                 Text(
                   'Saldo Total',
-                  style: TextStyle(
-                    color: const Color(0xFF6B7280),
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'R\$ ${totalBalance.toStringAsFixed(2)}',
                   style: TextStyle(
-                    color: totalBalanceColor,
-                    fontSize: 18,
+                    color: totalBalanceColor, // Cor original: #00C9A7 ou #EF4444
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -743,7 +744,7 @@ class _CompactSummaryBar extends StatelessWidget {
           
           Container(
             width: 1,
-            height: 30,
+            height: 40,
             color: const Color(0xFFE5E7EB),
           ),
           
@@ -755,17 +756,18 @@ class _CompactSummaryBar extends StatelessWidget {
               children: [
                 Text(
                   'A Pagar',
-                  style: TextStyle(
-                    color: const Color(0xFF6B7280),
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'R\$ ${pendingExpense.toStringAsFixed(0)}',
                   style: const TextStyle(
-                    color: Color(0xFFEF4444),
-                    fontSize: 14,
+                    color: Color(0xFFEF4444), // Cor original: vermelho
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -775,7 +777,7 @@ class _CompactSummaryBar extends StatelessWidget {
           
           Container(
             width: 1,
-            height: 30,
+            height: 40,
             color: const Color(0xFFE5E7EB),
           ),
           
@@ -787,17 +789,18 @@ class _CompactSummaryBar extends StatelessWidget {
               children: [
                 Text(
                   'Já Pago',
-                  style: TextStyle(
-                    color: const Color(0xFF6B7280),
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'R\$ ${data.paidExpense.toStringAsFixed(0)}',
                   style: const TextStyle(
-                    color: Colors.orange,
-                    fontSize: 14,
+                    color: Colors.orange, // Cor original: laranja
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -807,7 +810,7 @@ class _CompactSummaryBar extends StatelessWidget {
           
           Container(
             width: 1,
-            height: 30,
+            height: 40,
             color: const Color(0xFFE5E7EB),
           ),
           
@@ -819,17 +822,18 @@ class _CompactSummaryBar extends StatelessWidget {
               children: [
                 Text(
                   'Recebido',
-                  style: TextStyle(
-                    color: const Color(0xFF6B7280),
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'R\$ ${data.paidIncome.toStringAsFixed(0)}',
                   style: const TextStyle(
-                    color: Color(0xFF10B981),
-                    fontSize: 14,
+                    color: Color(0xFF10B981), // Cor original: verde
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -839,7 +843,7 @@ class _CompactSummaryBar extends StatelessWidget {
           
           Container(
             width: 1,
-            height: 30,
+            height: 40,
             color: const Color(0xFFE5E7EB),
           ),
           
@@ -851,17 +855,18 @@ class _CompactSummaryBar extends StatelessWidget {
               children: [
                 Text(
                   'Saldo Mês',
-                  style: TextStyle(
-                    color: const Color(0xFF6B7280),
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   'R\$ ${monthBalance.toStringAsFixed(0)}',
                   style: TextStyle(
-                    color: monthBalanceColor,
-                    fontSize: 14,
+                    color: monthBalanceColor, // Cor original: verde ou vermelho
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -969,7 +974,7 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFF1B3B44),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: widget.item.isPaid 
@@ -979,7 +984,7 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
+                    color: Colors.black.withOpacity(0.2),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -1025,7 +1030,7 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                             Text(
                               widget.item.description,
                               style: const TextStyle(
-                                color: Color(0xFF1F2937),
+                                color: Colors.white,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.2,
@@ -1112,13 +1117,13 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                             Icon(
                               Icons.calendar_month,
                               size: 16,
-                              color: const Color(0xFF6B7280),
+                              color: Colors.white60,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               dateLabel,
                               style: const TextStyle(
-                                color: Color(0xFF6B7280),
+                                color: Colors.white60,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1159,7 +1164,7 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                           const SizedBox(width: 8),
                           _FocusedActionButton(
                             icon: Icons.attach_file_outlined,
-                            color: const Color(0xFF6B7280),
+                            color: Colors.white70,
                             onPressed: widget.onViewAttachments,
                           ),
                           if (!isIncome) ...[

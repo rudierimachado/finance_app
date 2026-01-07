@@ -51,8 +51,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _initAnimations();
-    _checkBiometric();
     _loadAppVersion();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkBiometric();
+    });
   }
 
   Future<void> _loadAppVersion() async {
@@ -91,29 +93,57 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Future<void> _checkBiometric() async {
-    try {
-      final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
-      final canCheck = await _localAuth.canCheckBiometrics;
-      final isDeviceSupported = await _localAuth.isDeviceSupported();
-      final available = await _localAuth.getAvailableBiometrics();
-      final hasEnrollment = available.isNotEmpty;
-      setState(() {
-        _biometricAvailable = canCheck && isDeviceSupported && hasEnrollment;
-        _biometricEnabled = enabledRaw == 'true';
-      });
-
-      // Tentar login automático com biometria se credenciais salvas
-      if (_biometricAvailable && _biometricEnabled) {
-        final savedEmail = await _secureStorage.read(key: 'saved_email');
-        if (savedEmail != null) {
-          _tryBiometricLogin();
-        }
-      }
-    } catch (e) {
+    // Se estiver na Web, desabilita biometria e storage criptografado nativo
+    if (kIsWeb) {
       setState(() {
         _biometricAvailable = false;
         _biometricEnabled = false;
       });
+      return;
+    }
+
+    // Tenta ler as configurações de biometria de forma isolada
+    String? enabledRaw;
+    try {
+      enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+    } catch (e) {
+      if (kDebugMode) print('[BIOMETRIC] Erro ao ler storage: $e');
+    }
+
+    // Tenta verificar disponibilidade nativa em um bloco try-catch separado e seguro
+    bool canCheck = false;
+    bool isDeviceSupported = false;
+    List<BiometricType> available = [];
+
+    try {
+      // Usamos um timeout curto para evitar travamentos caso o plugin nativo não responda
+      canCheck = await _localAuth.canCheckBiometrics;
+      isDeviceSupported = await _localAuth.isDeviceSupported();
+      available = await _localAuth.getAvailableBiometrics();
+    } catch (e) {
+      // Se der MissingPluginException ou qualquer erro nativo, o app CONTINUA normalmente
+      if (kDebugMode) {
+        print('[BIOMETRIC] Plugin nativo indisponível ou erro de compilação: $e');
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _biometricAvailable = canCheck && isDeviceSupported && available.isNotEmpty;
+      _biometricEnabled = enabledRaw == 'true';
+    });
+
+    // Só tenta o login automático se o plugin nativo respondeu positivamente
+    if (_biometricAvailable && _biometricEnabled) {
+      try {
+        final savedEmail = await _secureStorage.read(key: 'saved_email');
+        if (savedEmail != null) {
+          _tryBiometricLogin();
+        }
+      } catch (e) {
+        if (kDebugMode) print('[BIOMETRIC] Erro ao tentar login automático: $e');
+      }
     }
   }
 
@@ -148,10 +178,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       }
       
       final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Use sua digital para entrar',
+        localizedReason: 'Autentique-se para acessar sua conta com segurança',
         options: const AuthenticationOptions(
           biometricOnly: true,
           stickyAuth: true,
+          useErrorDialogs: true,
         ),
       );
 
@@ -160,6 +191,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       }
 
       if (authenticated) {
+        HapticFeedback.mediumImpact();
         final savedEmail = await _secureStorage.read(key: 'saved_email');
         final savedPassword = await _secureStorage.read(key: 'saved_password');
 
@@ -278,16 +310,23 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       if (response.statusCode == 200 && (data['success'] == true)) {
         if (!mounted) return;
 
-        // Salvar credenciais automaticamente para uso com biometria
-        if (kDebugMode) {
-          print('[LOGIN] Salvando credenciais: email=$email');
-        }
-        await _secureStorage.write(key: 'saved_email', value: email);
-        await _secureStorage.write(key: 'saved_password', value: password);
-        final verifyEmail = await _secureStorage.read(key: 'saved_email');
-        final verifyPassword = await _secureStorage.read(key: 'saved_password');
-        if (kDebugMode) {
-          print('[LOGIN] Verificação storage: email=${verifyEmail != null ? "SIM" : "NÃO"}, senha=${verifyPassword != null ? "SIM" : "NÃO"}');
+        // Salvar credenciais automaticamente para uso com biometria (Apenas Mobile)
+        if (!kIsWeb) {
+          await _secureStorage.write(key: 'saved_email', value: email);
+          await _secureStorage.write(key: 'saved_password', value: password);
+          
+          // Verificar se podemos oferecer biometria agora se não estiver habilitada
+          final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+          if (enabledRaw != 'true') {
+            final canCheck = await _localAuth.canCheckBiometrics;
+            final isDeviceSupported = await _localAuth.isDeviceSupported();
+            final available = await _localAuth.getAvailableBiometrics();
+            
+            if (canCheck && isDeviceSupported && available.isNotEmpty) {
+               // Marcar que queremos oferecer biometria ao entrar no Home
+               await _secureStorage.write(key: 'offer_biometric', value: 'true');
+            }
+          }
         }
 
         HapticFeedback.heavyImpact();

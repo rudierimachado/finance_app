@@ -12,6 +12,14 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="package" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.INSTALL_PACKAGE" />
+            <data android:scheme="content" />
+        </intent>
     </queries>
 
     <application

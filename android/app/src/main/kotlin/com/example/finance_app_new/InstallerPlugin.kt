@@ -12,15 +12,19 @@ object InstallerPlugin {
     fun installApk(@NonNull context: Context, apkPath: String) {
         val file = File(apkPath)
         if (!file.exists()) {
-            throw IllegalArgumentException("APK não encontrado: $apkPath")
+            throw IllegalArgumentException("APK não encontrado no caminho: $apkPath")
         }
 
         val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
+            try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file
+                )
+            } catch (e: Exception) {
+                throw IllegalStateException("Erro ao obter URI do FileProvider: ${e.message}. Verifique o authorities no AndroidManifest.")
+            }
         } else {
             Uri.fromFile(file)
         }
@@ -32,8 +36,17 @@ object InstallerPlugin {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
+            // Adicionar categoria padrão
+            addCategory(Intent.CATEGORY_DEFAULT)
         }
 
-        context.startActivity(intent)
+        // Para Android 11+ (API 30), opcionalmente podemos usar ACTION_INSTALL_PACKAGE
+        // mas ACTION_VIEW com o MIME type correto ainda é amplamente suportado.
+
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            throw RuntimeException("Falha ao iniciar atividade de instalação: ${e.message}")
+        }
     }
 }

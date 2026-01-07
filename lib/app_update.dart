@@ -110,12 +110,19 @@ class AppUpdater {
       }
 
       if (context.mounted) _showDownloadProgressDialog(context);
-      final apkPath = await _downloadAPK((progress) {});
-      if (context.mounted) Navigator.of(context).pop();
-      await _installAPK(apkPath);
-    } catch (e) {
+      final apkPath = await _downloadAPK((progress) {
+        // Opcional: atualizar progresso aqui se o diálogo suportar
+      });
+      
       if (context.mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(); // Fecha o diálogo de download
+        await _installAPK(apkPath);
+      }
+    } catch (e) {
+      print('[UPDATE] Erro durante atualização: $e');
+      if (context.mounted) {
+        // Não chamamos pop() aqui porque o diálogo de download já foi fechado 
+        // ou nem chegou a abrir se o erro foi antes.
         _showErrorDialog(context, 'Erro durante atualização: $e');
       }
     }
@@ -149,24 +156,41 @@ class AppUpdater {
           sendTimeout: const Duration(minutes: 5),
         ),
       );
-      Directory directory = await getApplicationDocumentsDirectory();
+      Directory directory = await getTemporaryDirectory();
       final updatesDir = Directory('${directory.path}/updates');
-      if (!await updatesDir.exists()) {
-        await updatesDir.create(recursive: true);
+      
+      // Limpeza profissional: remove arquivos antigos antes de baixar o novo
+      if (await updatesDir.exists()) {
+        await updatesDir.delete(recursive: true);
       }
+      await updatesDir.create(recursive: true);
 
       final savePath = '${updatesDir.path}/finance_app_update.apk';
-
-      final file = File(savePath);
-      if (await file.exists()) await file.delete();
       
-      await dio.download(
+      final response = await dio.download(
         '$apiBaseUrl/gerenciamento-financeiro/download/apk',
         savePath,
         onReceiveProgress: (received, total) {
           if (total > 0 && onProgress != null) onProgress(received / total);
         },
       );
+
+      if (response.statusCode != 200) {
+        throw Exception('Falha ao baixar APK: Servidor retornou erro ${response.statusCode}');
+      }
+
+      // Verificar se o arquivo foi realmente criado e não é uma página HTML de erro (404 personalizado, etc)
+      final downloadedFile = File(savePath);
+      if (!await downloadedFile.exists()) {
+        throw Exception('O arquivo APK não foi salvo corretamente.');
+      }
+      
+      final length = await downloadedFile.length();
+      if (length < 1000) { // Um APK real dificilmente teria menos de 1KB
+        await downloadedFile.delete();
+        throw Exception('O arquivo baixado parece ser inválido ou o servidor retornou um erro.');
+      }
+
       return savePath;
     } catch (e) {
       throw Exception('Falha no download: $e');
@@ -177,6 +201,13 @@ class AppUpdater {
   static Future<void> _installAPK(String apkPath) async {
     try {
       if (Platform.isAndroid) {
+        final status = await Permission.requestInstallPackages.status;
+        if (!status.isGranted) {
+          final result = await Permission.requestInstallPackages.request();
+          if (!result.isGranted) {
+            throw Exception('Permissão para instalar aplicativos desconhecidos é necessária.');
+          }
+        }
         await _installAPKAndroid(apkPath);
       } else {
         throw UnsupportedError('Instalação automática só suportada no Android');
