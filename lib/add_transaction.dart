@@ -937,16 +937,40 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       label: 'Categoria',
                       icon: Icons.category_outlined,
                       readOnly: !_manualCategory,
-                      suffix: _suggestingCategory 
-                          ? Container(
+                      suffix: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_suggestingCategory)
+                            Container(
                               padding: const EdgeInsets.all(8),
                               child: const SizedBox(
                                 width: 16,
                                 height: 16,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C9A7)),
                               ),
-                            )
-                          : null,
+                            ),
+                          IconButton(
+                            icon: Icon(
+                              _manualCategory ? Icons.edit_off : Icons.edit,
+                              size: 20,
+                              color: _manualCategory ? const Color(0xFF00C9A7) : Colors.white54,
+                            ),
+                            tooltip: _manualCategory ? 'Usar sugestão da IA' : 'Editar manualmente',
+                            onPressed: () {
+                              setState(() {
+                                _manualCategory = !_manualCategory;
+                                if (!_manualCategory) {
+                                  // Se desativar o manual, tenta sugerir de novo se tiver descrição
+                                  final text = _descriptionController.text.trim();
+                                  if (text.length >= 3) {
+                                    _suggestCategory(text);
+                                  }
+                                }
+                              });
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _buildModernTextField(
@@ -954,6 +978,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       label: 'Subcategoria',
                       icon: Icons.label_outlined,
                       readOnly: !_manualCategory,
+                      suffix: _manualCategory 
+                        ? const Icon(Icons.edit, size: 20, color: Color(0xFF00C9A7))
+                        : null,
                     ),
                     
                     if (_isCardFlow) ...[
