@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:open_file_plus/open_file_plus.dart';
+import 'package:open_filex/open_filex.dart';
 import 'config.dart';
 
 class AppUpdater {
@@ -294,8 +294,8 @@ class AppUpdater {
         throw Exception('APK não encontrado: $apkPath');
       }
 
-      // Usar open_file_plus que trata FileProvider e Intents automaticamente
-      final result = await OpenFile.open(
+      // Usar open_filex que trata FileProvider e Intents automaticamente
+      final result = await OpenFilex.open(
         apkPath,
         type: "application/vnd.android.package-archive",
       );

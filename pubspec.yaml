@@ -1,8 +1,8 @@
-name: finance_app_new
+﻿name: finance_app_new
 description: "Aplicativo de gerenciamento financeiro"
 publish_to: "none"
 
-version: 2.0.5+2
+version: 3.0.0+4
 
 environment:
   sdk: '^3.10.0'
@@ -21,7 +21,7 @@ dependencies:
   local_auth: ^2.3.0
   flutter_secure_storage: ^9.2.4
   file_picker: ^8.1.7
-  open_file_plus: ^3.4.1
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
@@ -30,3 +30,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+
