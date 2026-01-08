@@ -100,6 +100,8 @@ class AppUpdater {
 
   /// Inicia o processo de download e instalação
   static Future<void> _startUpdate(BuildContext context) async {
+    final progressNotifier = ValueNotifier<double>(0);
+    
     try {
       final hasPermissions = await _requestPermissions();
       if (!hasPermissions) {
@@ -109,21 +111,30 @@ class AppUpdater {
         return;
       }
 
-      if (context.mounted) _showDownloadProgressDialog(context);
+      if (context.mounted) _showDownloadProgressDialog(context, progressNotifier);
+      
+      print('[UPDATE] Iniciando download do APK...');
       final apkPath = await _downloadAPK((progress) {
-        // Opcional: atualizar progresso aqui se o diálogo suportar
+        progressNotifier.value = progress;
+        if ((progress * 100).toInt() % 10 == 0) {
+          print('[UPDATE] Progresso: ${(progress * 100).toStringAsFixed(0)}%');
+        }
       });
       
       if (context.mounted) {
+        print('[UPDATE] Download concluído. Caminho: $apkPath');
         Navigator.of(context).pop(); // Fecha o diálogo de download
+        
+        _showLoadingDialog(context); // Diálogo de "Instalando..."
         await _installAPK(apkPath);
+        if (context.mounted) Navigator.of(context).pop();
       }
     } catch (e) {
-      print('[UPDATE] Erro durante atualização: $e');
+      print('[UPDATE] ERRO: $e');
       if (context.mounted) {
-        // Não chamamos pop() aqui porque o diálogo de download já foi fechado 
-        // ou nem chegou a abrir se o erro foi antes.
-        _showErrorDialog(context, 'Erro durante atualização: $e');
+        // Tenta fechar o diálogo de progresso se ainda estiver aberto
+        try { Navigator.of(context).pop(); } catch (_) {}
+        _showErrorDialog(context, e.toString());
       }
     }
   }
@@ -152,48 +163,63 @@ class AppUpdater {
     try {
       final dio = Dio(
         BaseOptions(
-          receiveTimeout: const Duration(minutes: 5),
-          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 10),
+          sendTimeout: const Duration(minutes: 10),
+          followRedirects: true,
+          validateStatus: (status) => status != null && status < 500,
         ),
       );
+      
       Directory directory = await getTemporaryDirectory();
       final updatesDir = Directory('${directory.path}/updates');
       
-      // Limpeza profissional: remove arquivos antigos antes de baixar o novo
       if (await updatesDir.exists()) {
         await updatesDir.delete(recursive: true);
       }
       await updatesDir.create(recursive: true);
 
       final savePath = '${updatesDir.path}/finance_app_update.apk';
+      final downloadUrl = '$apiBaseUrl/gerenciamento-financeiro/download/apk';
       
+      print('[UPDATE] Baixando de: $downloadUrl');
+
       final response = await dio.download(
-        '$apiBaseUrl/gerenciamento-financeiro/download/apk',
+        downloadUrl,
         savePath,
         onReceiveProgress: (received, total) {
-          if (total > 0 && onProgress != null) onProgress(received / total);
+          if (total > 0 && onProgress != null) {
+            onProgress(received / total);
+          } else if (onProgress != null) {
+            onProgress(-1);
+          }
         },
       );
 
       if (response.statusCode != 200) {
-        throw Exception('Falha ao baixar APK: Servidor retornou erro ${response.statusCode}');
+        throw Exception('Servidor retornou erro ${response.statusCode}');
       }
 
-      // Verificar se o arquivo foi realmente criado e não é uma página HTML de erro (404 personalizado, etc)
       final downloadedFile = File(savePath);
       if (!await downloadedFile.exists()) {
-        throw Exception('O arquivo APK não foi salvo corretamente.');
+        throw Exception('O arquivo APK não foi salvo.');
       }
       
       final length = await downloadedFile.length();
-      if (length < 1000) { // Um APK real dificilmente teria menos de 1KB
+      print('[UPDATE] Arquivo baixado com sucesso. Tamanho: ${(length / 1024 / 1024).toStringAsFixed(2)} MB');
+      
+      if (length < 1000) {
         await downloadedFile.delete();
-        throw Exception('O arquivo baixado parece ser inválido ou o servidor retornou um erro.');
+        throw Exception('O arquivo baixado é inválido (muito pequeno).');
       }
 
       return savePath;
     } catch (e) {
-      throw Exception('Falha no download: $e');
+      if (e is DioException) {
+        if (e.type == DioExceptionType.connectionTimeout) throw Exception('Tempo de conexão esgotado.');
+        if (e.type == DioExceptionType.receiveTimeout) throw Exception('Tempo de download esgotado.');
+        throw Exception('Erro de rede: ${e.message}');
+      }
+      rethrow;
     }
   }
 
@@ -322,28 +348,42 @@ class AppUpdater {
     );
   }
 
-  static void _showDownloadProgressDialog(BuildContext context) {
+  static void _showDownloadProgressDialog(BuildContext context, ValueNotifier<double> progressNotifier) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        backgroundColor: Color(0xFF203A43),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Color(0xFF00C9A7)),
-            SizedBox(height: 16),
-            Text(
-              'Baixando atualização...',
-              style: TextStyle(color: Colors.white, fontSize: 16),
+      builder: (context) => ValueListenableBuilder<double>(
+        valueListenable: progressNotifier,
+        builder: (context, progress, child) {
+          final percent = progress < 0 ? 0 : (progress * 100).toInt();
+          return AlertDialog(
+            backgroundColor: const Color(0xFF203A43),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_download, color: Color(0xFF00C9A7), size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  'Baixando atualização...',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 24),
+                LinearProgressIndicator(
+                  value: progress < 0 ? null : progress,
+                  backgroundColor: Colors.white10,
+                  color: const Color(0xFF00C9A7),
+                  minHeight: 8,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  progress < 0 ? 'Calculando tamanho...' : '$percent%',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
             ),
-            SizedBox(height: 8),
-            Text(
-              'Não feche o app durante o download',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -355,23 +395,19 @@ class AppUpdater {
         backgroundColor: const Color(0xFF203A43),
         title: const Row(
           children: [
-            Icon(Icons.error, color: Colors.red),
+            Icon(Icons.error_outline, color: Colors.redAccent),
             SizedBox(width: 8),
-            Text('Erro', style: TextStyle(color: Colors.white)),
+            Text('Erro na Atualização', style: TextStyle(color: Colors.white)),
           ],
         ),
         content: Text(
-          message,
+          message.contains('Exception:') ? message.split('Exception:')[1] : message,
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('OK'),
+            child: const Text('OK', style: TextStyle(color: Color(0xFF00C9A7))),
           ),
         ],
       ),

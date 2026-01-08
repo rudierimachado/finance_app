@@ -2,7 +2,7 @@ name: finance_app_new
 description: "Aplicativo de gerenciamento financeiro"
 publish_to: "none"
 
-version: 2.0.0+1
+version: 2.0.5+2
 
 environment:
   sdk: '^3.10.0'
