@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:open_file_plus/open_file_plus.dart';
 import 'config.dart';
 
 class AppUpdater {
@@ -98,6 +99,29 @@ class AppUpdater {
     }
   }
 
+  static void _showInstallingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        backgroundColor: Color(0xFF203A43),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF00C9A7)),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Preparando instalação...\nSe o instalador não abrir, verifique as permissões.',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Inicia o processo de download e instalação
   static Future<void> _startUpdate(BuildContext context) async {
     final progressNotifier = ValueNotifier<double>(0);
@@ -106,7 +130,7 @@ class AppUpdater {
       final hasPermissions = await _requestPermissions();
       if (!hasPermissions) {
         if (context.mounted) {
-          _showErrorDialog(context, 'Permissões necessárias não foram concedidas.');
+          _showErrorDialog(context, 'Permissão para instalar aplicativos é necessária. Por favor, ative-a nas configurações.');
         }
         return;
       }
@@ -116,25 +140,36 @@ class AppUpdater {
       print('[UPDATE] Iniciando download do APK...');
       final apkPath = await _downloadAPK((progress) {
         progressNotifier.value = progress;
-        if ((progress * 100).toInt() % 10 == 0) {
-          print('[UPDATE] Progresso: ${(progress * 100).toStringAsFixed(0)}%');
-        }
       });
       
       if (context.mounted) {
         print('[UPDATE] Download concluído. Caminho: $apkPath');
-        Navigator.of(context).pop(); // Fecha o diálogo de download
         
-        _showLoadingDialog(context); // Diálogo de "Instalando..."
+        // Tenta fechar o diálogo de progresso com segurança
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop(); 
+        }
+        
+        _showInstallingDialog(context);
+        
+        // Pequeno atraso para garantir que o sistema de arquivos liberou o APK
+        await Future.delayed(const Duration(seconds: 1));
+        
+        print('[UPDATE] Chamando instalação nativa...');
         await _installAPK(apkPath);
-        if (context.mounted) Navigator.of(context).pop();
+        
+        // Fecha o diálogo de "Instalando" após um tempo
+        await Future.delayed(const Duration(seconds: 3));
+        if (context.mounted && Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
       }
     } catch (e) {
       print('[UPDATE] ERRO: $e');
       if (context.mounted) {
-        // Tenta fechar o diálogo de progresso se ainda estiver aberto
-        try { Navigator.of(context).pop(); } catch (_) {}
-        _showErrorDialog(context, e.toString());
+        // Tenta fechar diálogos de carregamento/progresso
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        _showErrorDialog(context, 'Falha na atualização: $e');
       }
     }
   }
@@ -170,8 +205,11 @@ class AppUpdater {
         ),
       );
       
-      Directory directory = await getTemporaryDirectory();
-      final updatesDir = Directory('${directory.path}/updates');
+      // Use sempre external cache directory para APKs
+      final directory = await getExternalCacheDirectories();
+      final targetDir = directory?.first ?? await getTemporaryDirectory();
+      
+      final updatesDir = Directory('${targetDir.path}/updates');
       
       if (await updatesDir.exists()) {
         await updatesDir.delete(recursive: true);
@@ -189,8 +227,6 @@ class AppUpdater {
         onReceiveProgress: (received, total) {
           if (total > 0 && onProgress != null) {
             onProgress(received / total);
-          } else if (onProgress != null) {
-            onProgress(-1);
           }
         },
       );
@@ -205,19 +241,26 @@ class AppUpdater {
       }
       
       final length = await downloadedFile.length();
-      print('[UPDATE] Arquivo baixado com sucesso. Tamanho: ${(length / 1024 / 1024).toStringAsFixed(2)} MB');
+      print('[UPDATE] Arquivo baixado. Tamanho: ${(length / 1024 / 1024).toStringAsFixed(2)} MB');
       
       if (length < 1000) {
         await downloadedFile.delete();
-        throw Exception('O arquivo baixado é inválido (muito pequeno).');
+        throw Exception('Arquivo inválido (muito pequeno).');
       }
 
       return savePath;
     } catch (e) {
       if (e is DioException) {
-        if (e.type == DioExceptionType.connectionTimeout) throw Exception('Tempo de conexão esgotado.');
-        if (e.type == DioExceptionType.receiveTimeout) throw Exception('Tempo de download esgotado.');
-        throw Exception('Erro de rede: ${e.message}');
+        switch (e.type) {
+          case DioExceptionType.connectionTimeout:
+            throw Exception('Tempo de conexão esgotado');
+          case DioExceptionType.receiveTimeout:
+            throw Exception('Tempo de download esgotado');
+          case DioExceptionType.badResponse:
+            throw Exception('Servidor indisponível (${e.response?.statusCode})');
+          default:
+            throw Exception('Erro de rede: ${e.message}');
+        }
       }
       rethrow;
     }
@@ -243,7 +286,7 @@ class AppUpdater {
     }
   }
 
-  /// Instalação no Android via intent ACTION_INSTALL_PACKAGE
+  /// Instalação no Android via open_file_plus
   static Future<void> _installAPKAndroid(String apkPath) async {
     try {
       final file = File(apkPath);
@@ -251,9 +294,15 @@ class AppUpdater {
         throw Exception('APK não encontrado: $apkPath');
       }
 
-      // Usar MethodChannel para chamar intent nativa
-      const platform = MethodChannel('com.example.finance_app_new/installer');
-      await platform.invokeMethod('installApk', {'path': apkPath});
+      // Usar open_file_plus que trata FileProvider e Intents automaticamente
+      final result = await OpenFile.open(
+        apkPath,
+        type: "application/vnd.android.package-archive",
+      );
+      
+      if (result.type != ResultType.done) {
+        throw Exception('Falha ao abrir instalador: ${result.message}');
+      }
     } catch (e) {
       throw Exception('Falha ao invocar instalação: $e');
     }
