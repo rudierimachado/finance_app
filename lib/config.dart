@@ -62,6 +62,6 @@ String getApiBaseUrl() {
   return url;
 }
 
-final String apiBaseUrl = getApiBaseUrl();
+String apiBaseUrl = getApiBaseUrl();
 
 final ValueNotifier<int> financeRefreshTick = ValueNotifier<int>(0);

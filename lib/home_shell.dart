@@ -1449,9 +1449,7 @@ class _WorkspaceManagerPageState extends State<WorkspaceManagerPage> {
           });
 
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Workspace criado com saldo zerado.')),
-          );
+          Navigator.of(context).pop(newWorkspace.id);
         }
       } else {
         if (!mounted) return;
@@ -1490,21 +1488,7 @@ class _WorkspaceManagerPageState extends State<WorkspaceManagerPage> {
         });
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: const [
-                Icon(Icons.swap_horiz, color: Colors.white),
-                SizedBox(width: 12),
-                Text('Workspace alterado com sucesso!'),
-              ],
-            ),
-            backgroundColor: const Color(0xFF00C9A7),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        Navigator.of(context).pop(newId);
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

@@ -292,18 +292,46 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final password = _passwordController.text;
 
     try {
-      final uri = Uri.parse('$apiBaseUrl/gerenciamento-financeiro/api/login');
+      Future<http.Response> doRequest(String baseUrl) {
+        final uri = Uri.parse('$baseUrl/gerenciamento-financeiro/api/login');
+        return http.post(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(<String, dynamic>{
+            'email': email,
+            'password': password,
+          }),
+        );
+      }
 
-      final response = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(<String, dynamic>{
-          'email': email,
-          'password': password,
-        }),
-      );
+      String? computeFallbackBaseUrl(String baseUrl) {
+        final lower = baseUrl.toLowerCase().trim();
+        if (lower.contains('localhost:5000') || lower.contains('127.0.0.1:5000')) {
+          return baseUrl.replaceFirst(':5000', ':5001');
+        }
+        if (lower.contains('localhost:5001') || lower.contains('127.0.0.1:5001')) {
+          return baseUrl.replaceFirst(':5001', ':5000');
+        }
+        return null;
+      }
+
+      final originalBaseUrl = apiBaseUrl;
+      http.Response response;
+      try {
+        response = await doRequest(apiBaseUrl);
+      } catch (e) {
+        final fallback = computeFallbackBaseUrl(originalBaseUrl);
+        if (fallback == null) rethrow;
+        try {
+          apiBaseUrl = fallback;
+          response = await doRequest(apiBaseUrl);
+        } catch (_) {
+          apiBaseUrl = originalBaseUrl;
+          rethrow;
+        }
+      }
 
       final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
 
