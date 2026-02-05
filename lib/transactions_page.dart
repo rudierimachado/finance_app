@@ -206,6 +206,9 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
         categories.add(catName);
       }
 
+      final curInst = (e['current_installment'] as num?)?.toInt();
+      final totInst = (e['total_installments'] as num?)?.toInt();
+
       items.add(_TxItem(
         id: id,
         description: desc,
@@ -216,6 +219,8 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
         date: date,
         categoryName: catName,
         categoryColor: catColor,
+        currentInstallment: curInst,
+        totalInstallments: totInst,
       ));
     }
 
@@ -1139,9 +1144,11 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                                   color: const Color(0xFF8B5CF6).withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: const Text(
-                                  'RECORRENTE',
-                                  style: TextStyle(
+                                child: Text(
+                                  widget.item.totalInstallments != null 
+                                      ? 'PARCELADO ${widget.item.currentInstallment}/${widget.item.totalInstallments}'
+                                      : 'RECORRENTE',
+                                  style: const TextStyle(
                                     color: Color(0xFF8B5CF6),
                                     fontSize: 8,
                                     fontWeight: FontWeight.w800,
@@ -1671,6 +1678,8 @@ class _TxItem {
   final DateTime? date;
   final String? categoryName;
   final Color? categoryColor;
+  final int? currentInstallment;
+  final int? totalInstallments;
 
   _TxItem({
     required this.id,
@@ -1682,5 +1691,7 @@ class _TxItem {
     required this.date,
     required this.categoryName,
     required this.categoryColor,
+    this.currentInstallment,
+    this.totalInstallments,
   });
 }

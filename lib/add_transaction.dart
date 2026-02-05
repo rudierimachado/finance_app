@@ -33,7 +33,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   bool _isPaid = false;
   bool _suggestingCategory = false;
   bool _categoryGenerated = false;
-  bool _manualCategory = false;
   String _lastSuggestedDescription = '';
   bool _isRecurring = false;
   int _recurringDay = 1;
@@ -599,7 +598,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     setState(() {
       _suggestingCategory = true;
       _categoryGenerated = false;
-      _manualCategory = false;
       _lastSuggestedDescription = description.trim();
       _categoryController.clear();
       _subcategoryController.clear();
@@ -629,7 +627,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
       if (resp.statusCode != 200) {
         final msg = data?['message']?.toString();
-        final preview = resp.body.length > 180 ? resp.body.substring(0, 180) : resp.body;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -637,9 +634,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               backgroundColor: Colors.red,
             ),
           );
-          setState(() {
-            _manualCategory = true;
-          });
         }
         return;
       }
@@ -680,9 +674,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             backgroundColor: const Color(0xFFEF4444),
           ),
         );
-        setState(() {
-          _manualCategory = true;
-        });
       }
     } on TimeoutException catch (e) {
       if (mounted) {
@@ -692,9 +683,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             backgroundColor: const Color(0xFFEF4444),
           ),
         );
-        setState(() {
-          _manualCategory = true;
-        });
       }
     } catch (e) {
       if (mounted) {
@@ -704,9 +692,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             backgroundColor: Color(0xFFEF4444),
           ),
         );
-        setState(() {
-          _manualCategory = true;
-        });
       }
     } finally {
       if (mounted) {
@@ -753,6 +738,17 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   Future<void> _submit() async {
     // ... código original mantido igual
     if (!_formKey.currentState!.validate()) return;
+
+    // Permite continuar mesmo se a IA não sugeriu (usuário pode digitar)
+    if (_categoryController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe uma categoria para a transação.'),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
 
     final amount = double.tryParse(_amountController.text.replaceAll(',', '.'));
     if (amount == null || amount <= 0) {
@@ -838,14 +834,27 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
       final msg = data['message']?.toString() ?? 'Erro ao salvar transação.';
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Erro'),
+            content: Text(msg),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Falha de conexão: ${e.toString().substring(0, 100)}'),
-            duration: const Duration(seconds: 5),
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Falha de Conexão'),
+            content: Text(e.toString()),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
           ),
         );
       }
@@ -936,7 +945,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       controller: _categoryController,
                       label: 'Categoria',
                       icon: Icons.category_outlined,
-                      readOnly: !_manualCategory,
+                      readOnly: false, // Permitir edição manual
                       suffix: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -948,27 +957,22 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                                 height: 16,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C9A7)),
                               ),
-                            ),
-                          IconButton(
-                            icon: Icon(
-                              _manualCategory ? Icons.edit_off : Icons.edit,
-                              size: 20,
-                              color: _manualCategory ? const Color(0xFF00C9A7) : Colors.white54,
-                            ),
-                            tooltip: _manualCategory ? 'Usar sugestão da IA' : 'Editar manualmente',
-                            onPressed: () {
-                              setState(() {
-                                _manualCategory = !_manualCategory;
-                                if (!_manualCategory) {
-                                  // Se desativar o manual, tenta sugerir de novo se tiver descrição
-                                  final text = _descriptionController.text.trim();
-                                  if (text.length >= 3) {
-                                    _suggestCategory(text);
-                                  }
+                            )
+                          else
+                            IconButton(
+                              icon: const Icon(Icons.auto_awesome, color: Color(0xFF00C9A7), size: 20),
+                              onPressed: () {
+                                final desc = _descriptionController.text.trim();
+                                if (desc.isNotEmpty) {
+                                  _suggestCategory(desc);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Digite uma descrição primeiro.')),
+                                  );
                                 }
-                              });
-                            },
-                          ),
+                              },
+                              tooltip: 'Sugerir com IA',
+                            ),
                         ],
                       ),
                     ),
@@ -977,10 +981,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       controller: _subcategoryController,
                       label: 'Subcategoria',
                       icon: Icons.label_outlined,
-                      readOnly: !_manualCategory,
-                      suffix: _manualCategory 
-                        ? const Icon(Icons.edit, size: 20, color: Color(0xFF00C9A7))
-                        : null,
+                      readOnly: false, // Permitir edição manual
                     ),
                     
                     if (_isCardFlow) ...[
@@ -1159,7 +1160,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   _categoryController.clear();
                   _subcategoryController.clear();
                   _categoryGenerated = false;
-                  _manualCategory = false;
                   _salaryFromController.clear();
                   _isRecurring = false;
                   _recurringUnlimited = true;
@@ -1186,7 +1186,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   _categoryController.clear();
                   _subcategoryController.clear();
                   _categoryGenerated = false;
-                  _manualCategory = false;
                   _salaryFromController.clear();
                   _isRecurring = false;
                   _recurringUnlimited = true;
@@ -1588,7 +1587,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   }
 
   Widget _buildDatePicker() {
-    final dateLabel = _type == 'expense' ? 'Data de vencimento' : 'Data da transação';
+    String dateLabel = _type == 'expense' ? 'Data de vencimento' : 'Data da transação';
+    if (_isRecurring && !_recurringUnlimited && _type == 'expense') {
+      dateLabel = 'Data do 1º vencimento';
+    }
     
     return GestureDetector(
       onTap: _pickDate,
@@ -1839,9 +1841,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       _recurringUnlimited = v;
                       if (_recurringUnlimited) {
                         _recurringInstallments = 1;
-                        final now = DateTime.now();
-                        _recurringEndMonth = now.month;
-                        _recurringEndYear = now.year;
                       }
                     });
                   },
@@ -1851,7 +1850,74 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               ],
             ),
           ],
-          // Resto da lógica mantida igual...
+          
+          if (!_recurringUnlimited && _type == 'expense') ...[
+            const SizedBox(height: 20),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00C9A7).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.pin_outlined, color: Color(0xFF00C9A7), size: 20),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Número de Parcelas',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$_recurringInstallments parcelas',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        if (_recurringInstallments > 1) {
+                          setState(() => _recurringInstallments--);
+                        }
+                      },
+                      icon: const Icon(Icons.remove_circle_outline, color: Colors.white60),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$_recurringInstallments',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() => _recurringInstallments++);
+                      },
+                      icon: const Icon(Icons.add_circle_outline, color: Color(0xFF00C9A7)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -2090,6 +2156,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                         final data = jsonDecode(resp.body);
                         if (data['success'] == true) {
                           await _loadCreditCards();
+                          if (!context.mounted) return;
                           if (mounted) {
                             setState(() {
                               _selectedCreditCardId = data['card']['id'];
