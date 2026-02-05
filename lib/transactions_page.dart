@@ -977,20 +977,35 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
           return Transform.scale(
             scale: 1 - (_controller.value * 0.02),
             child: Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: const Color(0xFF1B3B44),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF1E3A47).withOpacity(0.95),
+                    const Color(0xFF152935).withOpacity(0.92),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: widget.item.isPaid 
-                      ? const Color(0xFF10B981).withOpacity(0.3)
-                      : const Color(0xFFF59E0B).withOpacity(0.3),
-                  width: 2,
+                      ? const Color(0xFF10B981).withOpacity(0.4)
+                      : const Color(0xFFF59E0B).withOpacity(0.4),
+                  width: 1.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 12,
+                    color: (widget.item.isPaid 
+                        ? const Color(0xFF10B981) 
+                        : const Color(0xFFF59E0B)).withOpacity(0.15),
+                    blurRadius: 20,
+                    spreadRadius: -2,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),
                 ],
@@ -1001,27 +1016,39 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                   // Linha principal - descrição e valor
                   Row(
                     children: [
-                      // Ícone grande e colorido
+                      // Ícone grande e colorido com efeito premium
                       Container(
-                        width: 50,
-                        height: 50,
+                        width: 54,
+                        height: 54,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [bgColor, bgColor.withOpacity(0.8)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              bgColor,
+                              bgColor.withOpacity(0.7),
+                            ],
                           ),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: bgColor.withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                              color: bgColor.withOpacity(0.4),
+                              blurRadius: 12,
+                              spreadRadius: 0,
+                              offset: const Offset(0, 4),
+                            ),
+                            BoxShadow(
+                              color: Colors.white.withOpacity(0.1),
+                              blurRadius: 1,
+                              spreadRadius: 0,
+                              offset: const Offset(0, -1),
                             ),
                           ],
                         ),
                         child: Icon(
                           icon,
                           color: Colors.white,
-                          size: 26,
+                          size: 28,
                         ),
                       ),
                       
@@ -1137,22 +1164,45 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                               const SizedBox(width: 12),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF8B5CF6).withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  widget.item.totalInstallments != null 
-                                      ? 'PARCELADO ${widget.item.currentInstallment}/${widget.item.totalInstallments}'
-                                      : 'RECORRENTE',
-                                  style: const TextStyle(
-                                    color: Color(0xFF8B5CF6),
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w800,
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      const Color(0xFF8B5CF6).withOpacity(0.25),
+                                      const Color(0xFF6366F1).withOpacity(0.20),
+                                    ],
                                   ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFF8B5CF6).withOpacity(0.4),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      widget.item.totalInstallments != null 
+                                          ? Icons.credit_card 
+                                          : Icons.repeat,
+                                      color: const Color(0xFFA78BFA),
+                                      size: 12,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      widget.item.totalInstallments != null 
+                                          ? '${widget.item.currentInstallment}/${widget.item.totalInstallments}'
+                                          : 'RECORRENTE',
+                                      style: const TextStyle(
+                                        color: Color(0xFFA78BFA),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -1185,6 +1235,22 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                       ),
                     ],
                   ),
+                  
+                  // Barra de progresso para parcelamentos
+                  if (widget.item.totalInstallments != null && widget.item.totalInstallments! > 1) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: (widget.item.currentInstallment ?? 1) / widget.item.totalInstallments!,
+                        backgroundColor: Colors.white.withOpacity(0.1),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF8B5CF6),
+                        ),
+                        minHeight: 3,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
