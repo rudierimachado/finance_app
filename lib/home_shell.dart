@@ -80,10 +80,23 @@ class _HomeShellState extends State<HomeShell> {
       aOptions: AndroidOptions(encryptedSharedPreferences: true),
     );
     
-    final enabledRaw = await storage.read(key: 'biometric_enabled');
+    // Helper para leitura segura
+    Future<String?> safeRead(String key) async {
+      try {
+        return await storage.read(key: key);
+      } catch (e) {
+        if (kDebugMode) print('[STORAGE] Erro ao ler $key no Home: $e');
+        if (e is PlatformException && (e.message?.contains('BadPaddingException') == true || e.message?.contains('decryption') == true)) {
+          await storage.deleteAll();
+        }
+        return null;
+      }
+    }
+    
+    final enabledRaw = await safeRead('biometric_enabled');
     if (enabledRaw == 'true') return; // Já está ativado
 
-    final offerBiometric = await storage.read(key: 'offer_biometric');
+    final offerBiometric = await safeRead('offer_biometric');
     if (offerBiometric != 'true') return; // Não foi marcado para oferecer
 
     final localAuth = LocalAuthentication();
@@ -96,7 +109,9 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       
       // Limpa a flag para não oferecer toda vez que entrar no home se ele recusar agora
-      await storage.delete(key: 'offer_biometric');
+      try {
+        await storage.delete(key: 'offer_biometric');
+      } catch (_) {}
 
       if (!mounted) return;
       showDialog(

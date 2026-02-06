@@ -44,6 +44,37 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       encryptedSharedPreferences: true,
     ),
   );
+
+  /// Lê do storage com segurança, tratando erros de descriptografia (BadPaddingException)
+  Future<String?> _safeRead(String key) async {
+    try {
+      return await _secureStorage.read(key: key);
+    } catch (e) {
+      if (kDebugMode) print('[STORAGE] Erro ao ler $key: $e');
+      if (e is PlatformException && (e.message?.contains('BadPaddingException') == true || e.message?.contains('decryption') == true)) {
+        if (kDebugMode) print('[STORAGE] Erro de descriptografia detectado. Limpando storage...');
+        await _secureStorage.deleteAll();
+      }
+      return null;
+    }
+  }
+
+  /// Escreve no storage com segurança
+  Future<void> _safeWrite(String key, String value) async {
+    try {
+      await _secureStorage.write(key: key, value: value);
+    } catch (e) {
+      if (kDebugMode) print('[STORAGE] Erro ao escrever $key: $e');
+      if (e is PlatformException && (e.message?.contains('BadPaddingException') == true || e.message?.contains('decryption') == true)) {
+        await _secureStorage.deleteAll();
+        // Tenta escrever de novo após limpar
+        try {
+          await _secureStorage.write(key: key, value: value);
+        } catch (_) {}
+      }
+    }
+  }
+
   bool _biometricAvailable = false;
   bool _biometricEnabled = false;
 
@@ -105,7 +136,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     // Tenta ler as configurações de biometria de forma isolada
     String? enabledRaw;
     try {
-      enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+      enabledRaw = await _safeRead('biometric_enabled');
     } catch (e) {
       if (kDebugMode) print('[BIOMETRIC] Erro ao ler storage: $e');
     }
@@ -137,7 +168,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     // Só tenta o login automático se o plugin nativo respondeu positivamente
     if (_biometricAvailable && _biometricEnabled) {
       try {
-        final savedEmail = await _secureStorage.read(key: 'saved_email');
+        final savedEmail = await _safeRead('saved_email');
         if (savedEmail != null) {
           _tryBiometricLogin();
         }
@@ -153,7 +184,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         print('[BIOMETRIC] Iniciando tentativa de login biométrico');
       }
       
-      final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+      final enabledRaw = await _safeRead('biometric_enabled');
       if (kDebugMode) {
         print('[BIOMETRIC] biometric_enabled = $enabledRaw');
       }
@@ -192,8 +223,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
       if (authenticated) {
         HapticFeedback.mediumImpact();
-        final savedEmail = await _secureStorage.read(key: 'saved_email');
-        final savedPassword = await _secureStorage.read(key: 'saved_password');
+        final savedEmail = await _safeRead('saved_email');
+        final savedPassword = await _safeRead('saved_password');
 
         if (kDebugMode) {
           print('[BIOMETRIC] Email salvo: ${savedEmail != null ? "SIM" : "NÃO"}');
@@ -340,11 +371,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
         // Salvar credenciais automaticamente para uso com biometria (Apenas Mobile)
         if (!kIsWeb) {
-          await _secureStorage.write(key: 'saved_email', value: email);
-          await _secureStorage.write(key: 'saved_password', value: password);
+          await _safeWrite('saved_email', email);
+          await _safeWrite('saved_password', password);
           
           // Verificar se podemos oferecer biometria agora se não estiver habilitada
-          final enabledRaw = await _secureStorage.read(key: 'biometric_enabled');
+          final enabledRaw = await _safeRead('biometric_enabled');
           if (enabledRaw != 'true') {
             final canCheck = await _localAuth.canCheckBiometrics;
             final isDeviceSupported = await _localAuth.isDeviceSupported();
@@ -352,7 +383,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             
             if (canCheck && isDeviceSupported && available.isNotEmpty) {
                // Marcar que queremos oferecer biometria ao entrar no Home
-               await _secureStorage.write(key: 'offer_biometric', value: 'true');
+               await _safeWrite('offer_biometric', 'true');
             }
           }
         }
