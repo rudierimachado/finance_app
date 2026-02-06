@@ -2,7 +2,7 @@
 description: "Aplicativo de gerenciamento financeiro"
 publish_to: "none"
 
-version: 0.0.0+12
+version: 0.0.0+13
 
 environment:
   sdk: '^3.10.0'
