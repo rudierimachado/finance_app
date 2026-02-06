@@ -12,8 +12,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'add_transaction.dart';
 import 'app_update.dart';
 import 'config.dart';
-import 'finance_ai_page.dart';
 import 'transactions_page.dart';
+import 'dashboard_page.dart';
 import 'workspace_selector.dart';
 
 class HomeShell extends StatefulWidget {
@@ -258,14 +258,6 @@ class _HomeShellState extends State<HomeShell> {
         backgroundColor: const Color(0xFF0F2027),
         elevation: 0,
         actions: [
-          if (_index == 1)
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white70),
-              onPressed: () {
-                financeAiClearNotifier.value = financeAiClearNotifier.value + 1;
-              },
-              tooltip: 'Novo Chat',
-            ),
           if (_appVersion != null)
             Center(
               child: Padding(
@@ -282,37 +274,35 @@ class _HomeShellState extends State<HomeShell> {
             ),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white70),
-            onPressed: () => setState(() => _index = 2),
+            onPressed: () => setState(() => _index = 1),
             tooltip: 'Ajustes',
           ),
         ],
       ),
-      floatingActionButton: _index == 1
-          ? null
-          : FloatingActionButton(
-              heroTag: 'main_fab',
-              onPressed: () async {
-                final changed = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => AddTransactionPage(
-                      userId: widget.userId,
-                      workspaceId: _activeWorkspaceId,
-                    ),
-                  ),
-                );
-                if (changed == true) {
-                  financeRefreshTick.value = financeRefreshTick.value + 1;
-                }
-              },
-              backgroundColor: const Color(0xFF00C9A7),
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'main_fab',
+        onPressed: () async {
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => AddTransactionPage(
+                userId: widget.userId,
+                workspaceId: _activeWorkspaceId,
+              ),
             ),
+          );
+          if (changed == true) {
+            financeRefreshTick.value = financeRefreshTick.value + 1;
+          }
+        },
+        backgroundColor: const Color(0xFF00C9A7),
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
+      ),
       body: IndexedStack(
         index: _index,
         children: [
+          DashboardPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           TransactionsPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
-          FinanceAiPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           _SettingsPlaceholderPage(
             userId: widget.userId,
             activeWorkspaceId: _activeWorkspaceId,
@@ -336,14 +326,14 @@ class _HomeShellState extends State<HomeShell> {
           type: BottomNavigationBarType.fixed,
           items: const [
             BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard_outlined),
+              activeIcon: Icon(Icons.dashboard),
+              label: 'Dashboard',
+            ),
+            BottomNavigationBarItem(
               icon: Icon(Icons.list_alt_outlined),
               activeIcon: Icon(Icons.list_alt),
               label: 'Transações',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.auto_awesome_outlined),
-              activeIcon: Icon(Icons.auto_awesome),
-              label: 'IA',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.settings_outlined),

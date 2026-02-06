@@ -298,6 +298,110 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
     );
   }
 
+  Future<void> _deleteTransaction(int transactionId, bool isRecurring) async {
+    String? scope;
+    if (isRecurring) {
+      scope = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF0F2027),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: Colors.white.withOpacity(0.10)),
+            ),
+            title: const Text(
+              'Excluir recorrência',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+            ),
+            content: const Text(
+              'Essa transação é recorrente. O que você deseja excluir?',
+              style: TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('single'),
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFF00C9A7)),
+                child: const Text('Só esta'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('future'),
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFFF59E0B)),
+                child: const Text('Esta e futuras'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop('all'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Todas'),
+              ),
+            ],
+          );
+        },
+      );
+      if (scope == null) return;
+    } else {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF0F2027),
+            title: const Text('Excluir transação', style: TextStyle(color: Colors.white)),
+            content: const Text('Tem certeza que deseja excluir esta transação?', style: TextStyle(color: Colors.white70)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Excluir'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true) return;
+    }
+
+    try {
+      Uri buildUri(String prefix) => Uri.parse(
+        '$apiBaseUrl$prefix/api/transactions/$transactionId?user_id=${widget.userId}${scope != null ? '&scope=$scope' : ''}',
+      );
+
+      var uri = buildUri('/gerenciamento-financeiro');
+      var resp = await http.delete(uri).timeout(const Duration(seconds: 10));
+
+      if (resp.statusCode == 404) {
+        uri = buildUri('');
+        resp = await http.delete(uri).timeout(const Duration(seconds: 10));
+      }
+
+      final data = jsonDecode(resp.body);
+      if (resp.statusCode == 200 && data['success'] == true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transação excluída com sucesso!'),
+            backgroundColor: Color(0xFFEF4444),
+          ),
+        );
+        financeRefreshTick.value = financeRefreshTick.value + 1;
+      } else {
+        throw Exception(data['message'] ?? 'Erro ao excluir');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao excluir: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Future<void> _setPaid(int transactionId, bool newStatus) async {
     if (transactionId <= 0) {
       if (!mounted) return;
@@ -495,6 +599,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
                                   items: filteredItems,
                                   onEdit: _editTransaction,
                                   onViewAttachments: _viewAttachments,
+                                  onDelete: _deleteTransaction,
                                   onTogglePaid: _setPaid,
                                   controller: _staggerController,
                                 ),
@@ -889,6 +994,7 @@ class _FocusedTransactionsList extends StatelessWidget {
   final List<_TxItem> items;
   final void Function(int) onEdit;
   final void Function(int, String) onViewAttachments;
+  final void Function(int, bool) onDelete;
   final void Function(int, bool) onTogglePaid;
   final AnimationController controller;
 
@@ -896,6 +1002,7 @@ class _FocusedTransactionsList extends StatelessWidget {
     required this.items,
     required this.onEdit,
     required this.onViewAttachments,
+    required this.onDelete,
     required this.onTogglePaid,
     required this.controller,
   });
@@ -910,6 +1017,7 @@ class _FocusedTransactionsList extends StatelessWidget {
           item: items[index],
           onEdit: () => onEdit(items[index].id),
           onViewAttachments: () => onViewAttachments(items[index].id, items[index].description),
+          onDelete: () => onDelete(items[index].id, items[index].isRecurring),
           onTogglePaid: (value) => onTogglePaid(items[index].id, value),
         );
       },
@@ -922,12 +1030,14 @@ class _FocusedTransactionCard extends StatefulWidget {
   final _TxItem item;
   final VoidCallback onEdit;
   final VoidCallback onViewAttachments;
+  final VoidCallback onDelete;
   final ValueChanged<bool> onTogglePaid;
 
   const _FocusedTransactionCard({
     required this.item,
     required this.onEdit,
     required this.onViewAttachments,
+    required this.onDelete,
     required this.onTogglePaid,
   });
 
@@ -1223,6 +1333,12 @@ class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
                             icon: Icons.attach_file_outlined,
                             color: Colors.white70,
                             onPressed: widget.onViewAttachments,
+                          ),
+                          const SizedBox(width: 8),
+                          _FocusedActionButton(
+                            icon: Icons.delete_outline,
+                            color: const Color(0xFFEF4444),
+                            onPressed: widget.onDelete,
                           ),
                           if (!isIncome) ...[
                             const SizedBox(width: 12),

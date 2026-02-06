@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'login.dart';
 import 'register.dart';
 import 'workspace_onboarding_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('pt_BR', null);
+  Intl.defaultLocale = 'pt_BR';
   runApp(const MyApp());
 }
 
