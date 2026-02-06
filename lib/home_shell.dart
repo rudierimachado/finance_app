@@ -741,8 +741,8 @@ class _SettingsPageState extends State<_SettingsPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Faça login primeiro para ativar a biometria.'),
-            duration: Duration(seconds: 3),
+            content: Text('Faça login novamente para ativar a biometria, pois suas credenciais seguras não foram encontradas.'),
+            duration: Duration(seconds: 4),
           ),
         );
         setState(() {
@@ -752,10 +752,10 @@ class _SettingsPageState extends State<_SettingsPage> {
         return;
       }
 
-      // Autenticar com biometria
+      // Autenticar com biometria antes de ativar
       try {
         final authenticated = await _localAuth.authenticate(
-          localizedReason: 'Confirme sua identidade para ativar a biometria',
+          localizedReason: 'Confirme sua identidade para ativar o acesso por biometria',
           options: const AuthenticationOptions(
             biometricOnly: true,
             stickyAuth: true,
@@ -784,12 +784,25 @@ class _SettingsPageState extends State<_SettingsPage> {
       }
     }
 
-    await _storage.write(key: 'biometric_enabled', value: value ? 'true' : 'false');
+    try {
+      await _storage.write(key: 'biometric_enabled', value: value ? 'true' : 'false');
+    } catch (e) {
+      if (kDebugMode) print('[STORAGE] Erro ao salvar biometric_enabled: $e');
+      // Se falhar a escrita (ex: BadPadding), tenta limpar e escrever o essencial
+      try {
+        await _storage.deleteAll();
+        await _storage.write(key: 'biometric_enabled', value: value ? 'true' : 'false');
+      } catch (_) {}
+    }
+
     if (!mounted) return;
     setState(() => _toggleBusy = false);
     
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Biometria ${value ? "ativada" : "desativada"} com sucesso!')),
+      SnackBar(
+        content: Text('Biometria ${value ? "ativada" : "desativada"} com sucesso!'),
+        backgroundColor: value ? const Color(0xFF00C9A7) : null,
+      ),
     );
   }
 

@@ -371,8 +371,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
         // Salvar credenciais automaticamente para uso com biometria (Apenas Mobile)
         if (!kIsWeb) {
-          await _safeWrite('saved_email', email);
-          await _safeWrite('saved_password', password);
+          // Garante que o storage está limpo se houver erro prévio de descriptografia
+          try {
+            await _secureStorage.write(key: 'saved_email', value: email);
+            await _secureStorage.write(key: 'saved_password', value: password);
+            await _secureStorage.write(key: 'biometric_enabled', value: _biometricEnabled ? 'true' : 'false');
+          } catch (e) {
+            if (kDebugMode) print('[STORAGE] Erro ao salvar credenciais no login: $e');
+            await _secureStorage.deleteAll();
+            await _secureStorage.write(key: 'saved_email', value: email);
+            await _secureStorage.write(key: 'saved_password', value: password);
+            await _secureStorage.write(key: 'biometric_enabled', value: _biometricEnabled ? 'true' : 'false');
+          }
           
           // Verificar se podemos oferecer biometria agora se não estiver habilitada
           final enabledRaw = await _safeRead('biometric_enabled');

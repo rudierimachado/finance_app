@@ -18,7 +18,7 @@ String getApiBaseUrl() {
   
   // Para testar localmente: mude 'false' para 'true'
   // DESENVOLVIMENTO: true = localhost | PRODUÇÃO: false = AWS
-  if (false && kDebugMode) {
+  if (kDebugMode) {
     // Web usa localhost
     if (kIsWeb) {
       const url = 'http://localhost:5000';

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:ui';
 
+import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -32,8 +34,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
 
   bool _filtersExpanded = false;
   late AnimationController _animationController;
-  late AnimationController _staggerController;
-  late Animation<double> _fadeAnimation;
+  late AnimationController _listAnimationController;
 
   late final VoidCallback _refreshListener;
 
@@ -53,12 +54,10 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    _staggerController = AnimationController(
+    
+    _listAnimationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
     _refreshListener = () {
@@ -88,7 +87,7 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
   @override
   void dispose() {
     _animationController.dispose();
-    _staggerController.dispose();
+    _listAnimationController.dispose();
     financeRefreshTick.removeListener(_refreshListener);
     _queryController.dispose();
     super.dispose();
@@ -303,67 +302,13 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
     if (isRecurring) {
       scope = await showDialog<String>(
         context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF0F2027),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: BorderSide(color: Colors.white.withOpacity(0.10)),
-            ),
-            title: const Text(
-              'Excluir recorrência',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-            ),
-            content: const Text(
-              'Essa transação é recorrente. O que você deseja excluir?',
-              style: TextStyle(color: Colors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop('single'),
-                style: TextButton.styleFrom(foregroundColor: const Color(0xFF00C9A7)),
-                child: const Text('Só esta'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop('future'),
-                style: TextButton.styleFrom(foregroundColor: const Color(0xFFF59E0B)),
-                child: const Text('Esta e futuras'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop('all'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFEF4444),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                child: const Text('Todas'),
-              ),
-            ],
-          );
-        },
+        builder: (context) => _buildDeleteDialog(isRecurring: true),
       );
       if (scope == null) return;
     } else {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF0F2027),
-            title: const Text('Excluir transação', style: TextStyle(color: Colors.white)),
-            content: const Text('Tem certeza que deseja excluir esta transação?', style: TextStyle(color: Colors.white70)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Excluir'),
-              ),
-            ],
-          );
-        },
+        builder: (context) => _buildDeleteDialog(isRecurring: false),
       );
       if (confirmed != true) return;
     }
@@ -384,30 +329,21 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
       final data = jsonDecode(resp.body);
       if (resp.statusCode == 200 && data['success'] == true) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transação excluída com sucesso!'),
-            backgroundColor: Color(0xFFEF4444),
-          ),
-        );
+        _showSnackBar('Transação excluída com sucesso!', isError: false);
         financeRefreshTick.value = financeRefreshTick.value + 1;
       } else {
         throw Exception(data['message'] ?? 'Erro ao excluir');
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Falha ao excluir: $e'), backgroundColor: Colors.red),
-      );
+      _showSnackBar('Falha ao excluir: $e', isError: true);
     }
   }
 
   Future<void> _setPaid(int transactionId, bool newStatus) async {
     if (transactionId <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erro: transação inválida'), backgroundColor: Colors.red),
-      );
+      _showSnackBar('Erro: transação inválida', isError: true);
       return;
     }
 
@@ -491,25 +427,145 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
         });
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao alterar status: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Erro ao alterar status: $e', isError: true);
     }
+  }
+
+  Widget _buildDeleteDialog({required bool isRecurring}) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E2E),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 30,
+              offset: const Offset(0, 15),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF4757).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.delete_forever_rounded,
+                color: Color(0xFFFF4757),
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              isRecurring ? 'Excluir Recorrência' : 'Excluir Transação',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isRecurring
+                  ? 'Essa transação é recorrente. O que você deseja excluir?'
+                  : 'Tem certeza que deseja excluir esta transação?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (isRecurring) ...[
+              _DialogButton(
+                label: 'Só esta',
+                icon: Icons.event_rounded,
+                color: const Color(0xFF00D9FF),
+                onPressed: () => Navigator.of(context).pop('single'),
+              ),
+              const SizedBox(height: 12),
+              _DialogButton(
+                label: 'Esta e futuras',
+                icon: Icons.event_repeat_rounded,
+                color: const Color(0xFFFFB800),
+                onPressed: () => Navigator.of(context).pop('future'),
+              ),
+              const SizedBox(height: 12),
+              _DialogButton(
+                label: 'Todas',
+                icon: Icons.delete_sweep_rounded,
+                color: const Color(0xFFFF4757),
+                onPressed: () => Navigator.of(context).pop('all'),
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _DialogButton(
+                      label: 'Cancelar',
+                      icon: Icons.close_rounded,
+                      color: Colors.white.withOpacity(0.3),
+                      onPressed: () => Navigator.of(context).pop(false),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _DialogButton(
+                      label: 'Excluir',
+                      icon: Icons.delete_rounded,
+                      color: const Color(0xFFFF4757),
+                      onPressed: () => Navigator.of(context).pop(true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSnackBar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? const Color(0xFFFF4757) : const Color(0xFF00E676),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (widget.workspaceId == null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0F2027),
-        body: const Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF6366F1),
-          ),
-        ),
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F2027),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF00C9A7))),
       );
     }
 
@@ -518,8 +574,8 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
       body: SafeArea(
         child: Column(
           children: [
-            // Header Compacto
-            _CompactHeader(
+            // Header Ultra Clean
+            _UltraCleanHeader(
               year: _year,
               month: _month,
               onPrevMonth: _prevMonth,
@@ -531,83 +587,71 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
             ),
 
             // Filtros
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              height: _filtersExpanded ? null : 0,
-              child: _filtersExpanded 
-                  ? FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: _CompactFiltersSection(
-                        typeFilter: _typeFilter,
-                        statusFilter: _statusFilter,
-                        categoryFilter: _categoryFilter,
-                        queryController: _queryController,
-                        availableCategories: _availableCategories,
-                        onTypeChanged: (value) => setState(() => _typeFilter = value),
-                        onStatusChanged: (value) => setState(() => _statusFilter = value),
-                        onCategoryChanged: (value) => setState(() => _categoryFilter = value),
-                        onApply: _applyFilters,
-                        onClear: _clearFilters,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
+            if (_filtersExpanded)
+              _UltraFiltersPanel(
+                typeFilter: _typeFilter,
+                statusFilter: _statusFilter,
+                categoryFilter: _categoryFilter,
+                queryController: _queryController,
+                availableCategories: _availableCategories,
+                onTypeChanged: (value) => setState(() => _typeFilter = value),
+                onStatusChanged: (value) => setState(() => _statusFilter = value),
+                onCategoryChanged: (value) => setState(() => _categoryFilter = value),
+                onApply: _applyFilters,
+                onClear: _clearFilters,
+                animation: _animationController,
+              ),
 
-            // Conteúdo principal
+            // Conteúdo
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: FutureBuilder<_TransactionsData>(
-                  future: _future,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const _CleanLoader();
-                    }
-                    
-                    if (snapshot.hasError) {
-                      return _ErrorWidget(
-                        message: 'Erro ao carregar transações',
-                        onRetry: () => setState(() => _future = _fetch()),
-                      );
-                    }
-
-                    final data = snapshot.data!;
-                    _currentItems = data.transactions;
-                    _availableCategories = data.categories;
-
-                    final filteredItems = _applyLocalFilters(_currentItems);
-
-                    _staggerController.forward();
-
-                    return Column(
-                      children: [
-                        // Barra horizontal com cores originais corretas
-                        _CompactSummaryBar(data: data),
-                        const SizedBox(height: 16),
-
-                        // Lista de transações
-                        Expanded(
-                          child: filteredItems.isEmpty
-                              ? _CleanEmptyState(
-                                  hasFilters: _typeFilter != 'all' || 
-                                             _statusFilter != 'all' || 
-                                             _categoryFilter != 'all' || 
-                                             _queryController.text.isNotEmpty,
-                                  onClearFilters: _clearFilters,
-                                )
-                              : _FocusedTransactionsList(
-                                  items: filteredItems,
-                                  onEdit: _editTransaction,
-                                  onViewAttachments: _viewAttachments,
-                                  onDelete: _deleteTransaction,
-                                  onTogglePaid: _setPaid,
-                                  controller: _staggerController,
-                                ),
-                        ),
-                      ],
+              child: FutureBuilder<_TransactionsData>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const _UltraLoader();
+                  }
+                  
+                  if (snapshot.hasError) {
+                    return _UltraError(
+                      message: 'Erro ao carregar transações',
+                      onRetry: () => setState(() => _future = _fetch()),
                     );
-                  },
-                ),
+                  }
+
+                  final data = snapshot.data!;
+                  _currentItems = data.transactions;
+                  _availableCategories = data.categories;
+
+                  final filteredItems = _applyLocalFilters(_currentItems);
+
+                  _listAnimationController.forward(from: 0);
+
+                  return Column(
+                    children: [
+                      // Resumo Financeiro Inline
+                      _UltraFinancialSummary(data: data),
+                      
+                      // Lista de Transações
+                      Expanded(
+                        child: filteredItems.isEmpty
+                            ? _UltraEmptyState(
+                                hasFilters: _typeFilter != 'all' || 
+                                           _statusFilter != 'all' || 
+                                           _categoryFilter != 'all' || 
+                                           _queryController.text.isNotEmpty,
+                                onClearFilters: _clearFilters,
+                              )
+                            : _UltraTransactionsList(
+                                items: filteredItems,
+                                onEdit: _editTransaction,
+                                onDelete: _deleteTransaction,
+                                onTogglePaid: _setPaid,
+                                animation: _listAnimationController,
+                              ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -617,8 +661,8 @@ class _TransactionsPageState extends State<TransactionsPage> with TickerProvider
   }
 }
 
-// Header compacto
-class _CompactHeader extends StatelessWidget {
+// ==================== HEADER ULTRA CLEAN ====================
+class _UltraCleanHeader extends StatelessWidget {
   final int year;
   final int month;
   final VoidCallback onPrevMonth;
@@ -627,7 +671,7 @@ class _CompactHeader extends StatelessWidget {
   final bool filtersExpanded;
   final bool hasFilters;
 
-  const _CompactHeader({
+  const _UltraCleanHeader({
     required this.year,
     required this.month,
     required this.onPrevMonth,
@@ -645,55 +689,48 @@ class _CompactHeader extends StatelessWidget {
     ];
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F2027),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          // Navegação de mês minimalista
+          _NavButton(
+            icon: Icons.chevron_left_rounded,
+            onPressed: onPrevMonth,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _CompactMonthButton(
-                  icon: Icons.chevron_left,
-                  onPressed: onPrevMonth,
-                ),
-                const SizedBox(width: 12),
                 Text(
-                  '${monthNames[month]} $year',
+                  monthNames[month].toUpperCase(),
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
                   ),
                 ),
-                const SizedBox(width: 12),
-                _CompactMonthButton(
-                  icon: Icons.chevron_right,
-                  onPressed: onNextMonth,
+                Text(
+                  year.toString(),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           ),
-          const Spacer(),
-          _CompactFilterButton(
+          _NavButton(
+            icon: Icons.chevron_right_rounded,
+            onPressed: onNextMonth,
+          ),
+          const SizedBox(width: 12),
+          // Botão de filtros
+          _FilterButton(
             onPressed: onToggleFilters,
-            isExpanded: filtersExpanded,
+            isActive: filtersExpanded,
             hasFilters: hasFilters,
           ),
         ],
@@ -702,809 +739,98 @@ class _CompactHeader extends StatelessWidget {
   }
 }
 
-class _CompactMonthButton extends StatelessWidget {
+class _NavButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
 
-  const _CompactMonthButton({
+  const _NavButton({
     required this.icon,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: 16,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+            ),
+          ),
+          child: Icon(icon, color: Colors.white, size: 24),
         ),
       ),
     );
   }
 }
 
-class _CompactFilterButton extends StatelessWidget {
+class _FilterButton extends StatelessWidget {
   final VoidCallback onPressed;
-  final bool isExpanded;
+  final bool isActive;
   final bool hasFilters;
 
-  const _CompactFilterButton({
+  const _FilterButton({
     required this.onPressed,
-    required this.isExpanded,
+    required this.isActive,
     required this.hasFilters,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: hasFilters ? const Color(0xFF6366F1) : Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: hasFilters ? [
-            BoxShadow(
-              color: const Color(0xFF6366F1).withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: hasFilters 
+                ? const Color(0xFF00C9A7).withOpacity(0.2)
+                : Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: hasFilters 
+                  ? const Color(0xFF00C9A7)
+                  : Colors.white.withOpacity(0.1),
             ),
-          ] : null,
-        ),
-        child: Stack(
-          children: [
-            Center(
-              child: AnimatedRotation(
-                turns: isExpanded ? 0.5 : 0,
-                duration: const Duration(milliseconds: 300),
-                child: Icon(
-                  isExpanded ? Icons.close : Icons.tune,
-                  color: hasFilters ? Colors.white : Colors.white70,
-                  size: 18,
-                ),
-              ),
-            ),
-            if (hasFilters && !isExpanded)
-              Positioned(
-                right: 2,
-                top: 2,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
+          ),
+          child: Stack(
+            children: [
+              Center(
+                child: AnimatedRotation(
+                  turns: isActive ? 0.125 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    isActive ? Icons.close_rounded : Icons.tune_rounded,
+                    color: hasFilters ? const Color(0xFF00C9A7) : Colors.white,
+                    size: 20,
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Barra horizontal com cores ORIGINAIS corretas e layout ajustado
-class _CompactSummaryBar extends StatelessWidget {
-  final _TransactionsData data;
-
-  const _CompactSummaryBar({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final pendingExpense = data.totalExpense - data.paidExpense;
-    final monthBalance = data.totalIncome - data.totalExpense;
-    final monthBalanceColor = monthBalance >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-    final totalBalance = data.prevBalance + monthBalance;
-    final totalBalanceColor = totalBalance >= 0 ? const Color(0xFF00C9A7) : const Color(0xFFEF4444);
-    
-    return Container(
-      height: 80, // Altura aumentada para não bugar os valores
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Saldo Total - DESTAQUE principal
-          Expanded(
-            flex: 2,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Saldo Total',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'R\$ ${totalBalance.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: totalBalanceColor, // Cor original: #00C9A7 ou #EF4444
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          Container(
-            width: 1,
-            height: 40,
-            color: const Color(0xFFE5E7EB),
-          ),
-          
-          // A Pagar
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'A Pagar',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'R\$ ${pendingExpense.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    color: Color(0xFFEF4444), // Cor original: vermelho
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          Container(
-            width: 1,
-            height: 40,
-            color: const Color(0xFFE5E7EB),
-          ),
-          
-          // Já Pago
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'Já Pago',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'R\$ ${data.paidExpense.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    color: Colors.orange, // Cor original: laranja
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          Container(
-            width: 1,
-            height: 40,
-            color: const Color(0xFFE5E7EB),
-          ),
-          
-          // Recebido
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'Recebido',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'R\$ ${data.paidIncome.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    color: Color(0xFF10B981), // Cor original: verde
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          Container(
-            width: 1,
-            height: 40,
-            color: const Color(0xFFE5E7EB),
-          ),
-          
-          // Saldo do Mês
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'Saldo Mês',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'R\$ ${monthBalance.toStringAsFixed(0)}',
-                  style: TextStyle(
-                    color: monthBalanceColor, // Cor original: verde ou vermelho
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Lista de transações focada
-class _FocusedTransactionsList extends StatelessWidget {
-  final List<_TxItem> items;
-  final void Function(int) onEdit;
-  final void Function(int, String) onViewAttachments;
-  final void Function(int, bool) onDelete;
-  final void Function(int, bool) onTogglePaid;
-  final AnimationController controller;
-
-  const _FocusedTransactionsList({
-    required this.items,
-    required this.onEdit,
-    required this.onViewAttachments,
-    required this.onDelete,
-    required this.onTogglePaid,
-    required this.controller,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        return _FocusedTransactionCard(
-          item: items[index],
-          onEdit: () => onEdit(items[index].id),
-          onViewAttachments: () => onViewAttachments(items[index].id, items[index].description),
-          onDelete: () => onDelete(items[index].id, items[index].isRecurring),
-          onTogglePaid: (value) => onTogglePaid(items[index].id, value),
-        );
-      },
-    );
-  }
-}
-
-// Card de transação otimizado
-class _FocusedTransactionCard extends StatefulWidget {
-  final _TxItem item;
-  final VoidCallback onEdit;
-  final VoidCallback onViewAttachments;
-  final VoidCallback onDelete;
-  final ValueChanged<bool> onTogglePaid;
-
-  const _FocusedTransactionCard({
-    required this.item,
-    required this.onEdit,
-    required this.onViewAttachments,
-    required this.onDelete,
-    required this.onTogglePaid,
-  });
-
-  @override
-  State<_FocusedTransactionCard> createState() => _FocusedTransactionCardState();
-}
-
-class _FocusedTransactionCardState extends State<_FocusedTransactionCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 150),
-      vsync: this,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isIncome = widget.item.type == 'income';
-    final amountColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-    final bgColor = isIncome ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-    final icon = isIncome ? Icons.trending_up : Icons.trending_down;
-    final sign = isIncome ? '+' : '-';
-    
-    final dateLabel = widget.item.date != null
-        ? '${widget.item.date!.day.toString().padLeft(2, '0')}/${widget.item.date!.month.toString().padLeft(2, '0')}/${widget.item.date!.year}'
-        : 'Data não definida';
-
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) => _controller.reverse(),
-      onTapCancel: () => _controller.reverse(),
-      onTap: widget.onEdit,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: 1 - (_controller.value * 0.02),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF1E3A47).withOpacity(0.95),
-                    const Color(0xFF152935).withOpacity(0.92),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: widget.item.isPaid 
-                      ? const Color(0xFF10B981).withOpacity(0.4)
-                      : const Color(0xFFF59E0B).withOpacity(0.4),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (widget.item.isPaid 
-                        ? const Color(0xFF10B981) 
-                        : const Color(0xFFF59E0B)).withOpacity(0.15),
-                    blurRadius: 20,
-                    spreadRadius: -2,
-                    offset: const Offset(0, 8),
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Linha principal - descrição e valor
-                  Row(
-                    children: [
-                      // Ícone grande e colorido com efeito premium
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              bgColor,
-                              bgColor.withOpacity(0.7),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: bgColor.withOpacity(0.4),
-                              blurRadius: 12,
-                              spreadRadius: 0,
-                              offset: const Offset(0, 4),
-                            ),
-                            BoxShadow(
-                              color: Colors.white.withOpacity(0.1),
-                              blurRadius: 1,
-                              spreadRadius: 0,
-                              offset: const Offset(0, -1),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          icon,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                      
-                      const SizedBox(width: 16),
-                      
-                      // Descrição e categoria
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.item.description,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.2,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            if (widget.item.categoryName != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: widget.item.categoryColor?.withOpacity(0.15) ?? 
-                                         const Color(0xFF6366F1).withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  widget.item.categoryName!,
-                                  style: TextStyle(
-                                    color: widget.item.categoryColor ?? const Color(0xFF6366F1),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      
-                      // Valor GRANDE
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '$sign R\$ ${widget.item.amount.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              color: amountColor,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: widget.item.isPaid 
-                                    ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                                    : [const Color(0xFFF59E0B), const Color(0xFFD97706)],
-                              ),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              widget.item.isPaid ? 'PAGO' : 'PENDENTE',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Linha inferior - data e ações
-                  Row(
-                    children: [
-                      // Data e informações extras
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.calendar_month,
-                              size: 16,
-                              color: Colors.white60,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              dateLabel,
-                              style: const TextStyle(
-                                color: Colors.white60,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (widget.item.isRecurring) ...[
-                              const SizedBox(width: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      const Color(0xFF8B5CF6).withOpacity(0.25),
-                                      const Color(0xFF6366F1).withOpacity(0.20),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: const Color(0xFF8B5CF6).withOpacity(0.4),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      widget.item.totalInstallments != null 
-                                          ? Icons.credit_card 
-                                          : Icons.repeat,
-                                      color: const Color(0xFFA78BFA),
-                                      size: 12,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      widget.item.totalInstallments != null 
-                                          ? '${widget.item.currentInstallment}/${widget.item.totalInstallments}'
-                                          : 'RECORRENTE',
-                                      style: const TextStyle(
-                                        color: Color(0xFFA78BFA),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      
-                      // Botões de ação maiores
-                      Row(
-                        children: [
-                          _FocusedActionButton(
-                            icon: Icons.edit_outlined,
-                            color: const Color(0xFF6366F1),
-                            onPressed: widget.onEdit,
-                          ),
-                          const SizedBox(width: 8),
-                          _FocusedActionButton(
-                            icon: Icons.attach_file_outlined,
-                            color: Colors.white70,
-                            onPressed: widget.onViewAttachments,
-                          ),
-                          const SizedBox(width: 8),
-                          _FocusedActionButton(
-                            icon: Icons.delete_outline,
-                            color: const Color(0xFFEF4444),
-                            onPressed: widget.onDelete,
-                          ),
-                          if (!isIncome) ...[
-                            const SizedBox(width: 12),
-                            _FocusedToggleButton(
-                              value: widget.item.isPaid,
-                              onChanged: widget.onTogglePaid,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                  
-                  // Barra de progresso para parcelamentos
-                  if (widget.item.totalInstallments != null && widget.item.totalInstallments! > 1) ...[
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: (widget.item.currentInstallment ?? 1) / widget.item.totalInstallments!,
-                        backgroundColor: Colors.white.withOpacity(0.1),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF8B5CF6),
-                        ),
-                        minHeight: 3,
-                      ),
+              if (hasFilters && !isActive)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF4757),
+                      shape: BoxShape.circle,
                     ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// Botões de ação
-class _FocusedActionButton extends StatefulWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onPressed;
-
-  const _FocusedActionButton({
-    required this.icon,
-    required this.color,
-    required this.onPressed,
-  });
-
-  @override
-  State<_FocusedActionButton> createState() => _FocusedActionButtonState();
-}
-
-class _FocusedActionButtonState extends State<_FocusedActionButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 100),
-      vsync: this,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) => _controller.reverse(),
-      onTapCancel: () => _controller.reverse(),
-      onTap: widget.onPressed,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: 1 - (_controller.value * 0.1),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: widget.color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: widget.color.withOpacity(0.3),
+                  ),
                 ),
-              ),
-              child: Icon(
-                widget.icon,
-                color: widget.color,
-                size: 18,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// Toggle button
-class _FocusedToggleButton extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _FocusedToggleButton({
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: Container(
-        width: 44,
-        height: 24,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: value 
-                ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                : [const Color(0xFFE5E7EB), const Color(0xFFD1D5DB)],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: (value ? const Color(0xFF10B981) : Colors.black)
-                  .withOpacity(0.2),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 200),
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 20,
-            height: 20,
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 4,
-                  offset: Offset(0, 1),
-                ),
-              ],
-            ),
-            child: value 
-                ? const Icon(
-                    Icons.check,
-                    size: 12,
-                    color: Color(0xFF10B981),
-                  )
-                : null,
+            ],
           ),
         ),
       ),
@@ -1512,8 +838,8 @@ class _FocusedToggleButton extends StatelessWidget {
   }
 }
 
-// Seção de filtros
-class _CompactFiltersSection extends StatelessWidget {
+// ==================== PAINEL DE FILTROS ====================
+class _UltraFiltersPanel extends StatelessWidget {
   final String typeFilter;
   final String statusFilter;
   final String categoryFilter;
@@ -1524,8 +850,9 @@ class _CompactFiltersSection extends StatelessWidget {
   final ValueChanged<String> onCategoryChanged;
   final VoidCallback onApply;
   final VoidCallback onClear;
+  final AnimationController animation;
 
-  const _CompactFiltersSection({
+  const _UltraFiltersPanel({
     required this.typeFilter,
     required this.statusFilter,
     required this.categoryFilter,
@@ -1536,159 +863,219 @@ class _CompactFiltersSection extends StatelessWidget {
     required this.onCategoryChanged,
     required this.onApply,
     required this.onClear,
+    required this.animation,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Campo de busca
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
-            child: TextField(
-              controller: queryController,
-              decoration: const InputDecoration(
-                hintText: 'Buscar transação...',
-                prefixIcon: Icon(Icons.search, color: Color(0xFF6366F1)),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
-              ),
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, -0.1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        )),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E2E),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
             ),
           ),
-          
-          const SizedBox(height: 12),
-          
-          // Filtros
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          child: Column(
             children: [
-              _CompactFilterChip(
-                label: typeFilter == 'all' ? 'Tipo' : (typeFilter == 'income' ? 'Receitas' : 'Despesas'),
-                isActive: typeFilter != 'all',
-                onTap: () => _showFilterDialog(context, 'Tipo', typeFilter, [
-                  ('all', 'Todos'),
-                  ('income', 'Receitas'),
-                  ('expense', 'Despesas'),
-                ], onTypeChanged),
-              ),
-              _CompactFilterChip(
-                label: statusFilter == 'all' ? 'Status' : (statusFilter == 'paid' ? 'Pagos' : 'Pendentes'),
-                isActive: statusFilter != 'all',
-                onTap: () => _showFilterDialog(context, 'Status', statusFilter, [
-                  ('all', 'Todos'),
-                  ('paid', 'Pagos'),
-                  ('pending', 'Pendentes'),
-                ], onStatusChanged),
-              ),
-              if (availableCategories.isNotEmpty)
-                _CompactFilterChip(
-                  label: categoryFilter == 'all' ? 'Categoria' : categoryFilter,
-                  isActive: categoryFilter != 'all',
-                  onTap: () => _showFilterDialog(context, 'Categoria', categoryFilter, [
-                    ('all', 'Todas'),
-                    ...availableCategories.map((cat) => (cat, cat)),
-                  ], onCategoryChanged),
+              // Campo de busca
+              TextField(
+                controller: queryController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Buscar transação...',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withOpacity(0.5)),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
-            ],
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Botões
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: onApply,
-                  icon: const Icon(Icons.search, size: 16),
-                  label: const Text('Aplicar'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6366F1),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+              ),
+              const SizedBox(height: 16),
+              // Chips de filtro
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _FilterChip(
+                    label: _getFilterLabel('Tipo', typeFilter, {'all': 'Todos', 'income': 'Receitas', 'expense': 'Despesas'}),
+                    isActive: typeFilter != 'all',
+                    onTap: () => _showFilterSheet(
+                      context,
+                      'Tipo',
+                      typeFilter,
+                      [
+                        ('all', 'Todos', Icons.all_inclusive_rounded),
+                        ('income', 'Receitas', Icons.arrow_downward_rounded),
+                        ('expense', 'Despesas', Icons.arrow_upward_rounded),
+                      ],
+                      onTypeChanged,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: onClear,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF3F4F6),
-                  foregroundColor: const Color(0xFF6B7280),
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                  _FilterChip(
+                    label: _getFilterLabel('Status', statusFilter, {'all': 'Todos', 'paid': 'Pagos', 'pending': 'Pendentes'}),
+                    isActive: statusFilter != 'all',
+                    onTap: () => _showFilterSheet(
+                      context,
+                      'Status',
+                      statusFilter,
+                      [
+                        ('all', 'Todos', Icons.all_inclusive_rounded),
+                        ('paid', 'Pagos', Icons.check_circle_rounded),
+                        ('pending', 'Pendentes', Icons.schedule_rounded),
+                      ],
+                      onStatusChanged,
+                    ),
                   ),
-                ),
-                child: const Text('Limpar'),
+                  if (availableCategories.isNotEmpty)
+                    _FilterChip(
+                      label: categoryFilter == 'all' ? 'Categoria' : categoryFilter,
+                      isActive: categoryFilter != 'all',
+                      onTap: () => _showFilterSheet(
+                        context,
+                        'Categoria',
+                        categoryFilter,
+                        [
+                          ('all', 'Todas', Icons.all_inclusive_rounded),
+                          ...availableCategories.map((cat) => (cat, cat, Icons.label_rounded)),
+                        ],
+                        onCategoryChanged,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Botões
+              Row(
+                children: [
+                  Expanded(
+                    child: _ActionButton(
+                      label: 'Aplicar',
+                      icon: Icons.check_rounded,
+                      color: const Color(0xFF00C9A7),
+                      onPressed: onApply,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _ActionButton(
+                    label: 'Limpar',
+                    icon: Icons.clear_all_rounded,
+                    color: Colors.white.withOpacity(0.1),
+                    textColor: Colors.white.withOpacity(0.5),
+                    onPressed: onClear,
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  void _showFilterDialog(
+  String _getFilterLabel(String prefix, String value, Map<String, String> labels) {
+    return value == 'all' ? prefix : (labels[value] ?? prefix);
+  }
+
+  void _showFilterSheet(
     BuildContext context,
     String title,
     String currentValue,
-    List<(String, String)> options,
+    List<(String, String, IconData)> options,
     ValueChanged<String> onChanged,
   ) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
-          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F2027),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
               Text(
-                'Filtrar por $title',
+                title,
                 style: const TextStyle(
-                  fontSize: 18,
+                  color: Colors.white,
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               ...options.map((option) {
                 final isSelected = option.$1 == currentValue;
-                return ListTile(
-                  title: Text(option.$2),
-                  leading: isSelected 
-                      ? const Icon(Icons.check_circle, color: Color(0xFF6366F1))
-                      : const Icon(Icons.radio_button_unchecked, color: Color(0xFFD1D5DB)),
-                  onTap: () {
-                    onChanged(option.$1);
-                    Navigator.pop(context);
-                  },
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        onChanged(option.$1);
+                        Navigator.pop(context);
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isSelected 
+                              ? const Color(0xFF00C9A7).withOpacity(0.2)
+                              : Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected 
+                                ? const Color(0xFF00C9A7)
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(option.$3, color: isSelected ? const Color(0xFF00C9A7) : Colors.white.withOpacity(0.5)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                option.$2,
+                                style: TextStyle(
+                                  color: isSelected ? const Color(0xFF00C9A7) : Colors.white,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(Icons.check_circle_rounded, color: Color(0xFF00C9A7)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 );
               }).toList(),
             ],
@@ -1699,12 +1086,12 @@ class _CompactFiltersSection extends StatelessWidget {
   }
 }
 
-class _CompactFilterChip extends StatelessWidget {
+class _FilterChip extends StatelessWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _CompactFilterChip({
+  const _FilterChip({
     required this.label,
     required this.isActive,
     required this.onTap,
@@ -1712,25 +1099,31 @@ class _CompactFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: isActive
-              ? const LinearGradient(
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                )
-              : null,
-          color: isActive ? null : const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? Colors.white : const Color(0xFF6B7280),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isActive 
+                ? const Color(0xFF00C9A7).withOpacity(0.2)
+                : Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isActive 
+                  ? const Color(0xFF00C9A7)
+                  : Colors.white.withOpacity(0.1),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isActive ? const Color(0xFF00C9A7) : Colors.white.withOpacity(0.7),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ),
@@ -1738,25 +1131,609 @@ class _CompactFilterChip extends StatelessWidget {
   }
 }
 
-// Componentes auxiliares
-class _CleanLoader extends StatelessWidget {
-  const _CleanLoader();
+// ==================== RESUMO FINANCEIRO ====================
+class _UltraFinancialSummary extends StatelessWidget {
+  final _TransactionsData data;
+
+  const _UltraFinancialSummary({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFF6366F1),
+    final totalBalance = data.prevBalance + (data.totalIncome - data.totalExpense);
+    final pendingExpense = data.totalExpense - data.paidExpense;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: totalBalance >= 0
+              ? [const Color(0xFF00C9A7), const Color(0xFF008B7D)]
+              : [const Color(0xFFFF4757), const Color(0xFFE63946)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (totalBalance >= 0 ? const Color(0xFF00C9A7) : const Color(0xFFFF4757)).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Saldo Total',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'R\$ ${totalBalance.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  totalBalance >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            height: 1,
+            color: Colors.white.withOpacity(0.2),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _SummaryMetric(
+                  label: 'Receitas',
+                  value: data.paidIncome,
+                  icon: Icons.arrow_downward_rounded,
+                  color: const Color(0xFF00E676),
+                ),
+              ),
+              Container(width: 1, height: 40, color: Colors.white.withOpacity(0.2)),
+              Expanded(
+                child: _SummaryMetric(
+                  label: 'Despesas',
+                  value: data.paidExpense,
+                  icon: Icons.arrow_upward_rounded,
+                  color: const Color(0xFFFFB800),
+                ),
+              ),
+              Container(width: 1, height: 40, color: Colors.white.withOpacity(0.2)),
+              Expanded(
+                child: _SummaryMetric(
+                  label: 'A Pagar',
+                  value: pendingExpense,
+                  icon: Icons.schedule_rounded,
+                  color: const Color(0xFFFF4757),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-class _CleanEmptyState extends StatelessWidget {
+class _SummaryMetric extends StatelessWidget {
+  final String label;
+  final double value;
+  final IconData icon;
+  final Color color;
+
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'R\$ ${value.toStringAsFixed(0)}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==================== LISTA DE TRANSAÇÕES ====================
+class _UltraTransactionsList extends StatelessWidget {
+  final List<_TxItem> items;
+  final void Function(int) onEdit;
+  final void Function(int, bool) onDelete;
+  final void Function(int, bool) onTogglePaid;
+  final AnimationController animation;
+
+  const _UltraTransactionsList({
+    required this.items,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onTogglePaid,
+    required this.animation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      physics: const BouncingScrollPhysics(),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        return _UltraTransactionCard(
+          item: items[index],
+          index: index,
+          onEdit: () => onEdit(items[index].id),
+          onDelete: () => onDelete(items[index].id, items[index].isRecurring),
+          onTogglePaid: (value) => onTogglePaid(items[index].id, value),
+          animation: animation,
+        );
+      },
+    );
+  }
+}
+
+// ==================== CARD DE TRANSAÇÃO ====================
+class _UltraTransactionCard extends StatefulWidget {
+  final _TxItem item;
+  final int index;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final ValueChanged<bool> onTogglePaid;
+  final AnimationController animation;
+
+  const _UltraTransactionCard({
+    required this.item,
+    required this.index,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onTogglePaid,
+    required this.animation,
+  });
+
+  @override
+  State<_UltraTransactionCard> createState() => _UltraTransactionCardState();
+}
+
+class _UltraTransactionCardState extends State<_UltraTransactionCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pressController;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressController = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncome = widget.item.type == 'income';
+    final accentColor = isIncome ? const Color(0xFF00E676) : const Color(0xFFFF4757);
+    final dateLabel = widget.item.date != null 
+        ? DateFormat('dd/MM/yyyy').format(widget.item.date!)
+        : 'Sem data';
+
+    // Animação de entrada escalonada
+    final delay = (widget.index * 0.05).clamp(0.0, 0.5);
+    final slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: widget.animation,
+      curve: Interval(delay, 1.0, curve: Curves.easeOutCubic),
+    ));
+
+    final fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: widget.animation,
+      curve: Interval(delay, 1.0, curve: Curves.easeOut),
+    ));
+
+    return FadeTransition(
+      opacity: fadeAnimation,
+      child: SlideTransition(
+        position: slideAnimation,
+        child: GestureDetector(
+          onTapDown: (_) {
+            setState(() => _isPressed = true);
+            _pressController.forward();
+          },
+          onTapUp: (_) {
+            setState(() => _isPressed = false);
+            _pressController.reverse();
+            widget.onEdit();
+          },
+          onTapCancel: () {
+            setState(() => _isPressed = false);
+            _pressController.reverse();
+          },
+          child: AnimatedScale(
+            scale: _isPressed ? 0.97 : 1.0,
+            duration: const Duration(milliseconds: 100),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E2E),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: widget.item.isPaid 
+                      ? Colors.white.withOpacity(0.05)
+                      : accentColor.withOpacity(0.2),
+                ),
+                boxShadow: [
+                  if (!widget.item.isPaid)
+                    BoxShadow(
+                      color: accentColor.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      // Ícone
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: accentColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          isIncome ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                          color: accentColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Info
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.item.description,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                if (widget.item.categoryName != null) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: accentColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      widget.item.categoryName!,
+                                      style: TextStyle(
+                                        color: accentColor,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Text(
+                                  dateLabel,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.4),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Valor
+                      Text(
+                        '${isIncome ? '+' : '-'} R\$ ${widget.item.amount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: accentColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      // Status com Toggle Button
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: widget.item.isPaid 
+                                ? const Color(0xFF00E676).withOpacity(0.1)
+                                : const Color(0xFFFFB800).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                widget.item.isPaid ? Icons.check_circle_rounded : Icons.schedule_rounded,
+                                color: widget.item.isPaid ? const Color(0xFF00E676) : const Color(0xFFFFB800),
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.item.isPaid ? 'PAGO' : 'PENDENTE',
+                                  style: TextStyle(
+                                    color: widget.item.isPaid ? const Color(0xFF00E676) : const Color(0xFFFFB800),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Transform.scale(
+                                scale: 0.8,
+                                child: Switch(
+                                  value: widget.item.isPaid,
+                                  onChanged: widget.onTogglePaid,
+                                  activeColor: const Color(0xFF00E676),
+                                  activeTrackColor: const Color(0xFF00E676).withOpacity(0.3),
+                                  inactiveThumbColor: const Color(0xFFFFB800),
+                                  inactiveTrackColor: const Color(0xFFFFB800).withOpacity(0.3),
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Botão editar
+                      _QuickActionButton(
+                        icon: Icons.edit_rounded,
+                        color: const Color(0xFF00C9A7),
+                        onPressed: widget.onEdit,
+                      ),
+                      const SizedBox(width: 8),
+                      // Botão excluir
+                      _QuickActionButton(
+                        icon: Icons.delete_rounded,
+                        color: const Color(0xFFFF4757),
+                        onPressed: widget.onDelete,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _QuickActionButton({
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== COMPONENTES AUXILIARES ====================
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color? textColor;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.textColor,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: textColor ?? Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor ?? Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DialogButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _DialogButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UltraLoader extends StatelessWidget {
+  const _UltraLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(
+        color: Color(0xFF00C9A7),
+        strokeWidth: 3,
+      ),
+    );
+  }
+}
+
+class _UltraEmptyState extends StatelessWidget {
   final bool hasFilters;
   final VoidCallback onClearFilters;
 
-  const _CleanEmptyState({
+  const _UltraEmptyState({
     required this.hasFilters,
     required this.onClearFilters,
   });
@@ -1767,31 +1744,42 @@ class _CleanEmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            hasFilters ? Icons.search_off : Icons.receipt_long,
-            size: 64,
-            color: const Color(0xFF6366F1).withOpacity(0.5),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00C9A7).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              hasFilters ? Icons.search_off_rounded : Icons.receipt_long_rounded,
+              size: 64,
+              color: const Color(0xFF00C9A7),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
-            hasFilters 
-                ? 'Nenhuma transação encontrada'
-                : 'Nenhuma transação neste mês',
+            hasFilters ? 'Nenhuma transação encontrada' : 'Nenhuma transação',
             style: const TextStyle(
-              color: Color(0xFF374151),
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            hasFilters ? 'Tente ajustar os filtros' : 'Adicione sua primeira transação',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
             ),
           ),
           if (hasFilters) ...[
-            const SizedBox(height: 16),
-            ElevatedButton(
+            const SizedBox(height: 24),
+            _ActionButton(
+              label: 'Limpar Filtros',
+              icon: Icons.clear_all_rounded,
+              color: const Color(0xFF00C9A7),
               onPressed: onClearFilters,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Limpar Filtros'),
             ),
           ],
         ],
@@ -1800,11 +1788,11 @@ class _CleanEmptyState extends StatelessWidget {
   }
 }
 
-class _ErrorWidget extends StatelessWidget {
+class _UltraError extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorWidget({
+  const _UltraError({
     required this.message,
     required this.onRetry,
   });
@@ -1815,13 +1803,33 @@ class _ErrorWidget extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline, size: 64, color: Color(0xFFEF4444)),
-          const SizedBox(height: 16),
-          Text(message, style: const TextStyle(fontSize: 16)),
-          const SizedBox(height: 16),
-          ElevatedButton(
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF4757).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.error_outline_rounded,
+              size: 64,
+              color: Color(0xFFFF4757),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 24),
+          _ActionButton(
+            label: 'Tentar Novamente',
+            icon: Icons.refresh_rounded,
+            color: const Color(0xFFFF4757),
             onPressed: onRetry,
-            child: const Text('Tentar Novamente'),
           ),
         ],
       ),
@@ -1829,7 +1837,7 @@ class _ErrorWidget extends StatelessWidget {
   }
 }
 
-// Classes de dados
+// ==================== CLASSES DE DADOS ====================
 class _TransactionsData {
   final List<_TxItem> transactions;
   final List<String> categories;
