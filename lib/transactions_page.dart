@@ -1139,7 +1139,9 @@ class _UltraFinancialSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalBalance = data.prevBalance + (data.totalIncome - data.totalExpense);
+    // Cálculo do Saldo Total:
+    // Saldo Anterior (Acumulado de meses passados) + (Receitas do mês - Despesas Pagas do mês)
+    final totalBalance = data.prevBalance + (data.totalIncome - data.paidExpense);
     final pendingExpense = data.totalExpense - data.paidExpense;
 
     return Container(
@@ -1214,7 +1216,7 @@ class _UltraFinancialSummary extends StatelessWidget {
               Expanded(
                 child: _SummaryMetric(
                   label: 'Receitas',
-                  value: data.paidIncome,
+                  value: data.totalIncome,
                   icon: Icons.arrow_downward_rounded,
                   color: const Color(0xFF00E676),
                 ),
@@ -1222,7 +1224,7 @@ class _UltraFinancialSummary extends StatelessWidget {
               Container(width: 1, height: 40, color: Colors.white.withOpacity(0.2)),
               Expanded(
                 child: _SummaryMetric(
-                  label: 'Despesas',
+                  label: 'Despesas Pagas',
                   value: data.paidExpense,
                   icon: Icons.arrow_upward_rounded,
                   color: const Color(0xFFFFB800),

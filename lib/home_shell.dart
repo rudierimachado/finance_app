@@ -13,7 +13,6 @@ import 'add_transaction.dart';
 import 'app_update.dart';
 import 'config.dart';
 import 'transactions_page.dart';
-import 'dashboard_page.dart';
 import 'workspace_selector.dart';
 
 class HomeShell extends StatefulWidget {
@@ -131,7 +130,7 @@ class _HomeShellState extends State<HomeShell> {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                setState(() => _index = 2); // Vai para a aba de Ajustes
+                setState(() => _index = 1); // Vai para a aba de Ajustes (agora index 1)
               },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00C9A7)),
               child: const Text('Ativar nos Ajustes'),
@@ -316,7 +315,6 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          DashboardPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           TransactionsPage(userId: widget.userId, workspaceId: _activeWorkspaceId),
           _SettingsPlaceholderPage(
             userId: widget.userId,
@@ -340,11 +338,6 @@ class _HomeShellState extends State<HomeShell> {
           unselectedItemColor: Colors.white.withOpacity(0.65),
           type: BottomNavigationBarType.fixed,
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
-            ),
             BottomNavigationBarItem(
               icon: Icon(Icons.list_alt_outlined),
               activeIcon: Icon(Icons.list_alt),

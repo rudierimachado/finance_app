@@ -21,12 +21,20 @@ class AppUpdater {
       final lastCheck = prefs.getInt(_lastCheckKey) ?? 0;
       final now = DateTime.now().millisecondsSinceEpoch;
       
-      if (now - lastCheck < _checkInterval.inMilliseconds) return;
+      // Se for atualização obrigatória, ignoramos o intervalo de tempo
+      final result = await _checkVersionFromServer();
+      final hasUpdate = result['hasUpdate'] == true;
+      final isMandatory = result['isMandatory'] == true;
+
+      if (!hasUpdate) return;
+
+      // Se não for obrigatória, respeitamos o intervalo de 6 horas
+      if (!isMandatory && (now - lastCheck < _checkInterval.inMilliseconds)) return;
+      
       await prefs.setInt(_lastCheckKey, now);
       
-      final hasUpdate = await _checkVersionFromServer();
-      if (hasUpdate && context.mounted) {
-        _showUpdateDialog(context, isAutomatic: true);
+      if (context.mounted) {
+        _showUpdateDialog(context, isAutomatic: true, isMandatory: isMandatory);
       }
     } catch (e) {
       print('[AUTO_UPDATE] Erro na verificação automática: $e');
@@ -37,11 +45,14 @@ class AppUpdater {
   static Future<void> checkForUpdatesManually(BuildContext context) async {
     _showLoadingDialog(context);
     try {
-      final hasUpdate = await _checkVersionFromServer();
+      final result = await _checkVersionFromServer();
+      final hasUpdate = result['hasUpdate'] == true;
+      final isMandatory = result['isMandatory'] == true;
+
       if (context.mounted) {
         Navigator.of(context).pop();
         if (hasUpdate) {
-          _showUpdateDialog(context, isAutomatic: false);
+          _showUpdateDialog(context, isAutomatic: false, isMandatory: isMandatory);
         } else {
           _showNoUpdateDialog(context);
         }
@@ -55,7 +66,7 @@ class AppUpdater {
   }
 
   /// Verifica se há nova versão disponível no servidor
-  static Future<bool> _checkVersionFromServer() async {
+  static Future<Map<String, dynamic>> _checkVersionFromServer() async {
     try {
       final dio = Dio(
         BaseOptions(
@@ -72,11 +83,17 @@ class AppUpdater {
       
       if (response.statusCode == 200) {
         final serverVersion = response.data['version'] as String?;
+        final isMandatory = response.data['mandatory'] == true;
         if (serverVersion != null) {
-          return _isNewerVersion(serverVersion, currentVersion);
+          final hasUpdate = _isNewerVersion(serverVersion, currentVersion);
+          return {
+            'hasUpdate': hasUpdate,
+            'isMandatory': isMandatory,
+            'version': serverVersion,
+          };
         }
       }
-      return false;
+      return {'hasUpdate': false, 'isMandatory': false};
     } catch (e) {
       throw Exception('Falha ao verificar versão: $e');
     }
@@ -112,7 +129,7 @@ class AppUpdater {
             SizedBox(width: 16),
             Expanded(
               child: Text(
-                'Preparando instalação...\nSe o instalador não abrir, verifique as permissões.',
+                'Iniciando instalação...\nO app será encerrado para completar a atualização.',
                 style: TextStyle(color: Colors.white, fontSize: 14),
               ),
             ),
@@ -158,9 +175,9 @@ class AppUpdater {
         print('[UPDATE] Chamando instalação nativa...');
         await _installAPK(apkPath);
         
-        // Fecha o diálogo de "Instalando" após um tempo
-        await Future.delayed(const Duration(seconds: 3));
-        if (context.mounted && Navigator.canPop(context)) {
+        // No Android, o exit(0) já é chamado dentro do _installAPKAndroid após o sucesso.
+        // Se chegar aqui em outra plataforma ou se falhar, apenas avisamos.
+        if (!Platform.isAndroid && context.mounted) {
           Navigator.of(context).pop();
         }
       }
@@ -205,21 +222,30 @@ class AppUpdater {
         ),
       );
       
-      // Use sempre external cache directory para APKs
-      final directory = await getExternalCacheDirectories();
-      final targetDir = directory?.first ?? await getTemporaryDirectory();
+      // Tentar usar o diretório de downloads público ou cache externo
+      String? savePath;
       
-      final updatesDir = Directory('${targetDir.path}/updates');
-      
-      if (await updatesDir.exists()) {
-        await updatesDir.delete(recursive: true);
+      if (Platform.isAndroid) {
+        // No Android, o diretório de cache externo é mais confiável para instalação via FileProvider
+        final externalDirs = await getExternalCacheDirectories();
+        if (externalDirs != null && externalDirs.isNotEmpty) {
+          final updatesDir = Directory('${externalDirs.first.path}/updates');
+          if (await updatesDir.exists()) await updatesDir.delete(recursive: true);
+          await updatesDir.create(recursive: true);
+          savePath = '${updatesDir.path}/finance_app_update.apk';
+        }
       }
-      await updatesDir.create(recursive: true);
-
-      final savePath = '${updatesDir.path}/finance_app_update.apk';
-      final downloadUrl = '$apiBaseUrl/gerenciamento-financeiro/download/apk';
       
-      print('[UPDATE] Baixando de: $downloadUrl');
+      if (savePath == null) {
+        final tempDir = await getTemporaryDirectory();
+        final updatesDir = Directory('${tempDir.path}/updates');
+        if (await updatesDir.exists()) await updatesDir.delete(recursive: true);
+        await updatesDir.create(recursive: true);
+        savePath = '${updatesDir.path}/finance_app_update.apk';
+      }
+      
+      final downloadUrl = '$apiBaseUrl/gerenciamento-financeiro/download/apk';
+      print('[UPDATE] Baixando de: $downloadUrl para: $savePath');
 
       final response = await dio.download(
         downloadUrl,
@@ -294,16 +320,26 @@ class AppUpdater {
         throw Exception('APK não encontrado: $apkPath');
       }
 
+      print('[UPDATE] Abrindo APK com OpenFilex...');
       // Usar open_filex que trata FileProvider e Intents automaticamente
       final result = await OpenFilex.open(
         apkPath,
         type: "application/vnd.android.package-archive",
       );
       
-      if (result.type != ResultType.done) {
-        throw Exception('Falha ao abrir instalador: ${result.message}');
+      print('[UPDATE] Resultado OpenFilex: ${result.type} - ${result.message}');
+      
+      if (result.type == ResultType.done) {
+        // Se o instalador abriu com sucesso, aguardamos um pouco e fechamos o app
+        // para que o Android possa substituir o pacote sem conflitos de processo.
+        print('[UPDATE] Instalador iniciado. Encerrando app em 2 segundos...');
+        await Future.delayed(const Duration(seconds: 2));
+        exit(0); 
+      } else {
+        throw Exception('Falha ao abrir instalador (${result.type}): ${result.message}');
       }
     } catch (e) {
+      print('[UPDATE] Erro fatal na instalação: $e');
       throw Exception('Falha ao invocar instalação: $e');
     }
   }
@@ -327,42 +363,51 @@ class AppUpdater {
     );
   }
 
-  static void _showUpdateDialog(BuildContext context, {required bool isAutomatic}) {
+  static void _showUpdateDialog(BuildContext context, {required bool isAutomatic, bool isMandatory = false}) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF203A43),
-        title: const Row(
-          children: [
-            Icon(Icons.system_update, color: Color(0xFF00C9A7)),
-            SizedBox(width: 8),
-            Text('Atualização Disponível', style: TextStyle(color: Colors.white)),
+      barrierDismissible: !isMandatory, // Não pode fechar se for obrigatória
+      builder: (context) => WillPopScope(
+        onWillPop: () async => !isMandatory, // Bloqueia botão voltar do Android
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF203A43),
+          title: Row(
+            children: [
+              const Icon(Icons.system_update, color: Color(0xFF00C9A7)),
+              const SizedBox(width: 8),
+              Text(
+                isMandatory ? 'Atualização Obrigatória' : 'Atualização Disponível',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: Text(
+            isMandatory
+                ? 'Esta versão contém melhorias críticas e a atualização é necessária para continuar usando o app.'
+                : (isAutomatic
+                    ? 'Uma nova versão está disponível. Deseja baixar e instalar agora?'
+                    : 'Nova versão encontrada! Instalar agora?'),
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            if (!isMandatory)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Agora não', style: TextStyle(color: Colors.white54)),
+              ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _startUpdate(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00C9A7),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Atualizar Agora'),
+            ),
           ],
         ),
-        content: Text(
-          isAutomatic
-              ? 'Uma nova versão está disponível. Deseja baixar e instalar automaticamente?'
-              : 'Nova versão encontrada! Instalar agora?',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Agora não', style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _startUpdate(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00C9A7),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Atualizar'),
-          ),
-        ],
       ),
     );
   }
